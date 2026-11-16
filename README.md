@@ -76,9 +76,11 @@ eigen integratie. Meerdere accu's tellen samen op. Het EMS schrijft nooit naar e
 ## Installeren
 
 1. Zet de integratie in Home Assistant, op een van twee manieren:
-   - **Via HACS**: HACS > ⋮ > Aangepaste repositories, voeg deze repository toe als type
-     Integratie, download Huis EMS en herstart. Updates verschijnen dan vanzelf in HACS. Dit kan
-     alleen als de repository openbaar is; HACS werkt niet met privérepositories.
+   - **Via de Marketplace** (ingebouwd sinds Home Assistant 2026.11, voorheen HACS): open de
+     Marketplace, kies **Voeg toe via link** en vul `https://github.com/vissermartijn/huis-ems-ha`
+     in. De eerste keer vraagt de Marketplace een GitHub-koppeling (een code op
+     github.com/login/device). Open daarna Huis EMS en kies **Installeren**; een herstart is niet
+     nodig. Nieuwe versies verschijnen vanzelf als update.
    - **Met de hand**: kopieer de map `custom_components/huis_ems` naar
      `/config/custom_components/` (bijvoorbeeld via de add-on Samba share) en herstart Home
      Assistant. Bijwerken gaat op dezelfde manier.
