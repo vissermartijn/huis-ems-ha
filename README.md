@@ -187,7 +187,7 @@ custom_components/huis_ems/        de integratie
   config_flow.py                   instelschermen
 homeassistant/dashboard.yaml       dashboard
 homeassistant/grafieken.yaml       grafieken met apexcharts-card
-tools/                             jaarsimulatie, benchmark van de rekenlast
+tools/                             jaarsimulatie, benchmark van de rekenlast, pictogram tekenen
 docs/werking.md                    vooruitblik, verschuiven, veiligheid, rekenlast
 docs/accu-adapters.md              accu's uitlezen
 ```
