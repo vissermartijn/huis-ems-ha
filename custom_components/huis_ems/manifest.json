@@ -1,0 +1,24 @@
+{
+  "domain": "huis_ems",
+  "name": "Huis EMS",
+  "after_dependencies": [
+    "energy",
+    "recorder",
+    "weather"
+  ],
+  "codeowners": [
+    "@vissermartijn"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/vissermartijn/huis-ems-ha",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.6.0",
+  "dependencies": [
+    "http",
+    "frontend"
+  ],
+  "issue_tracker": "https://github.com/vissermartijn/huis-ems-ha/issues"
+}

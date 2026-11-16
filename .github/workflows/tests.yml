@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * 1"   # elke maandagnacht ook de Home Assistant-test
+
+jobs:
+  rekenkern:
+    name: Rekenkern (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Kerntests
+        run: python -m unittest -v tests.test_core
+      - name: Alles compileert
+        run: python -m compileall -q custom_components tools tests
+
+  home-assistant:
+    name: Home Assistant-test
+    # Duurt ongeveer een kwartier; daarom niet bij elke push.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml websocket-client
+      - name: Wegwerp-Home Assistant met nagebootste meter en accu's
+        env:
+          HA_VERSION: ${{ vars.HA_VERSION || '2026.11.1' }}
+        run: sh tests/ha_test.sh

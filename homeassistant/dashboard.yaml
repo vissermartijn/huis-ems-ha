@@ -1,0 +1,147 @@
+# Dashboard voor Huis EMS. Maak een nieuw dashboard, open de YAML-editor en plak dit erin.
+# De overzichtskaart (custom:huis-ems-card) zit in de integratie; er is geen HACS voor nodig.
+title: Energiemanagement
+views:
+  - title: Overzicht
+    path: overzicht
+    icon: mdi:home-lightning-bolt
+    type: sections
+    max_columns: 4
+    sections:
+      - type: grid
+        column_span: 4
+        cards:
+          - type: custom:huis-ems-card
+            grid_options:
+              columns: full
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Verschuiven
+            icon: mdi:sun-thermometer
+          - type: tile
+            entity: switch.huis_ems_verbruik_verschuiven
+            name: Schakelen
+          - type: tile
+            entity: sensor.huis_ems_verschuifbaar_verbruik
+            name: Buffers
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {% set v = state_attr('sensor.huis_ems_verschuifbaar_verbruik', 'buffers') %}
+              {% set over = state_attr('sensor.huis_ems_verschuifbaar_verbruik', 'overschot_w') %}
+              {% if v %}
+              Over na de accu: {{ over if over is not none else '-' }} W{% if not state_attr('sensor.huis_ems_verschuifbaar_verbruik', 'schakelt') %} (schakelen staat uit: dit is wat het EMS zou doen){% endif %}
+
+              | Buffer | Stand | Temperatuur | Advies en reden |
+              |---|---|---|---|
+              {% for i in v -%}
+              | {{ i.naam }} | {{ i.stand }}{{ ', ' ~ i.wachtend if i.wachtend }}{{ ' (handmatig)' if i.beheer == 'handmatig' }} | {{ (i.temperatuur | round(1) ~ ' °C') if i.temperatuur is not none else '-' }} | {{ i.toelichting }} |
+              {% endfor %}
+              {% else %}Nog geen buffers ingesteld. Voeg ze toe via Configureren > Verschuiven.{% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Accu en net
+            icon: mdi:home-battery
+          - type: tile
+            entity: sensor.huis_ems_accu_lading
+            name: Lading
+          - type: tile
+            entity: sensor.huis_ems_accu_vermogen
+            name: Accu
+          - type: tile
+            entity: sensor.huis_ems_net_met_accu
+            name: Net
+          - type: tile
+            entity: sensor.huis_ems_net_zonder_accu
+            name: Zonder accu
+          - type: tile
+            entity: binary_sensor.huis_ems_meterstoring
+            name: Meterstoring
+          - type: tile
+            entity: number.huis_ems_zonvoorspelling_factor
+            name: Zonfactor
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Voorspelling
+            icon: mdi:bullseye-arrow
+          - type: tile
+            entity: sensor.huis_ems_voorspelkwaliteit
+            name: Afwijking verbruik
+          - type: tile
+            entity: sensor.huis_ems_verbruiksmodel
+            name: Model
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {% set q = states.sensor.huis_ems_voorspelkwaliteit.attributes %}
+              {% if q.kwartieren %}
+              Afgelopen {{ q.dagen }} dagen ({{ q.kwartieren }} kwartieren): verbruik gemiddeld {{ q.verbruik_gemiddelde_afwijking_w }} W per kwartier ernaast{% if q.verbruik_verschil_pct is not none %}, in totaal {{ q.verbruik_verschil_pct }}% {{ 'te hoog' if q.verbruik_verschil_pct > 0 else 'te laag' }} geschat{% endif %}.{% if q.zon_werkelijk_gedeeld_door_verwacht is defined %} Zon: werkelijk {{ (q.zon_werkelijk_gedeeld_door_verwacht * 100) | round(0) }}% van de verwachting.{% endif %}
+              {% else %}Nog geen vergelijking; die bouwt per kwartier op (zonder kWh-tellers van de zonnepanelen is het werkelijke verbruik niet te bepalen).{% endif %}
+
+              {{ state_attr('sensor.huis_ems_verbruiksmodel', 'toelichting') }}
+              {% set delen = state_attr('sensor.huis_ems_plan', 'onderdelen_24u_kwh') %}{% if delen %}
+
+              Verwacht komende 24 uur: {% for naam, kwh in delen.items() %}{{ naam }} {{ kwh }} kWh{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+              {% set plan_ms = state_attr('sensor.huis_ems_verbruiksmodel', 'rekentijd_plan_ms') %}{% if plan_ms is not none %}
+
+              Rekentijd: vooruitblik {{ plan_ms }} ms per kwartier, leren {{ state_attr('sensor.huis_ems_verbruiksmodel', 'rekentijd_leren_ms') or '-' }} ms per keer, {{ state_attr('sensor.huis_ems_verbruiksmodel', 'rekentijd_per_meting_ms') or '-' }} ms per meting.{% endif %}
+
+  - title: Per uur
+    path: per-uur
+    icon: mdi:table-clock
+    type: sections
+    max_columns: 4
+    sections:
+      - type: grid
+        column_span: 4
+        cards:
+          - type: heading
+            heading: Komende 24 uur
+            icon: mdi:crystal-ball
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {% set a = states.sensor.huis_ems_plan.attributes %}
+              {% if a.zon_w %}
+              {% set t0 = as_datetime(a.start) %}
+              {% set dagen = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] %}
+              {{ states('sensor.huis_ems_vooruitblik') }} Prijzen: {{ a.prijzen }}.
+
+              | Uur | Zon | Verbruik | Accu | Net | Lading | Inkoop |
+              |---|---|---|---|---|---|---|
+              {% for h in range([24, (a.zon_w | count) // 4] | min) -%}
+              {% set s = h * 4 -%}
+              {% set t = (t0 + timedelta(minutes=15 * s)) | as_local -%}
+              | {{ dagen[t.weekday()] }} {{ t.strftime('%H:%M') }} | {{ (a.zon_w[s:s+4] | sum / 4) | round(0) }} W | {{ (a.verbruik_w[s:s+4] | sum / 4) | round(0) }} W | {{ (a.accu_w[s:s+4] | sum / 4) | round(0) }} W | {{ (a.net_w[s:s+4] | sum / 4) | round(0) }} W | {{ a.soc_pct[s+3] ~ '%' if a.soc_pct else '-' }} | €{{ '%.2f' | format(a.koop[s:s+4] | sum / 4) }}{{ ' (geschat)' if 'geschat' in a.prijs_herkomst[s:s+4] }} |
+              {% endfor %}
+              {% else %}Nog geen vooruitblik.{% endif %}
+
+      - type: grid
+        column_span: 4
+        cards:
+          - type: heading
+            heading: Afgelopen 24 uur, verwacht tegenover werkelijk
+            icon: mdi:history
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {% set k = state_attr('sensor.huis_ems_terugblik', 'kwartieren') %}
+              {% if k %}
+              {% set dagen = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] %}
+              | Kwartier | Verbruik verwacht / werkelijk | Zon verwacht / werkelijk | Net verwacht / werkelijk | Lading | Verschoven |
+              |---|---|---|---|---|---|
+              {% for r in k[-96:] | reverse -%}
+              {% set t = as_datetime(r.t) | as_local -%}
+              | {{ dagen[t.weekday()] }} {{ t.strftime('%H:%M') }} | {{ r.verwacht_verbruik_w }} / {{ r.werkelijk_verbruik_w | default('-') }} W | {{ r.verwacht_zon_w }} / {{ r.werkelijk_zon_w | default('-') }} W | {{ r.verwacht_net_w }} / {{ r.net_w | default('-') }} W | {{ r.soc_pct ~ '%' if r.soc_pct is not none else '-' }} | {% for naam, m in (r.verschoven_min or {}).items() %}{{ naam }} {{ m }} min{{ ', ' if not loop.last }}{% endfor %} |
+              {% endfor %}
+              {% else %}Nog geen historie; die bouwt per kwartier op.{% endif %}

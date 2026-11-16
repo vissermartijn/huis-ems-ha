@@ -1,0 +1,205 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Huis EMS",
+        "description": "Choose the meters you already have in Home Assistant. Meters from the Energy dashboard are pre-filled. Tariffs, heat pump, batteries and shiftable loads are set up afterwards via Configure.",
+        "data": {
+          "p1_power": "Current grid power (P1 meter, + is import)",
+          "import_energy": "Grid import (kWh counters, e.g. tariff 1 and 2)",
+          "export_energy": "Grid export (kWh counters)",
+          "pv_energy": "Solar production (kWh counters, all installations)",
+          "use_energy_forecast": "Use the solar forecast from the Energy dashboard",
+          "pv_forecast_sensors": "Extra solar forecast from sensor attributes (optional)",
+          "pv_forecast_unit": "Unit of those sensor attributes",
+          "horizon_hours": "How far ahead to look"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Huis EMS is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Huis EMS",
+        "menu_options": {
+          "bronnen": "Meters and solar forecast",
+          "net": "Fast metering (HomeWizard P1)",
+          "tarieven": "Tariffs",
+          "warmtepomp": "Heat pump and weather",
+          "accu_toevoegen": "Add battery",
+          "accu_kiezen": "Change or remove battery",
+          "verbruiker_toevoegen": "Add consumer with its own model",
+          "verbruiker_kiezen": "Change or remove consumer with its own model",
+          "thermostaat_toevoegen": "Shift: add thermostat (e.g. floor heating)",
+          "schakelaar_toevoegen": "Shift: add switch (e.g. boiler element)",
+          "buffer_kiezen": "Shift: change or remove"
+        }
+      },
+      "bronnen": {
+        "title": "Meters and solar forecast",
+        "description": "The solar kWh counters are also used to compare, per quarter hour, how much sun was expected and how much came.",
+        "data": {
+          "p1_power": "Current grid power (P1 meter, + is import)",
+          "import_energy": "Grid import (kWh counters, e.g. tariff 1 and 2)",
+          "export_energy": "Grid export (kWh counters)",
+          "pv_energy": "Solar production (kWh counters, all installations)",
+          "use_energy_forecast": "Use the solar forecast from the Energy dashboard",
+          "pv_forecast_sensors": "Extra solar forecast from sensor attributes (optional)",
+          "pv_forecast_unit": "Unit of those sensor attributes",
+          "horizon_hours": "How far ahead to look"
+        }
+      },
+      "net": {
+        "title": "Fast metering",
+        "description": "Optional: the EMS reads the HomeWizard P1 meter directly every second, within your own network. Enter its IP address; the local API must be enabled in the HomeWizard app. Without an address the EMS follows the Home Assistant sensor (every 5 seconds), which is plenty for switching heat buffers.",
+        "data": {
+          "p1_host": "IP address of the HomeWizard P1 meter (optional)"
+        }
+      },
+      "tarieven": {
+        "title": "Tariffs",
+        "description": "With a fixed tariff only the two fixed prices apply. With a dynamic tariff choose a sensor with hourly prices in its attributes (Nord Pool, ENTSO-e or your supplier). Prices decide which hours count as expensive in the outlook.",
+        "data": {
+          "tariff_mode": "Tariff type",
+          "salderen": "Net metering (export is worth as much as import)",
+          "fixed_buy": "Fixed tariff: import",
+          "fixed_sell": "Fixed tariff: export (net)",
+          "price_sensor": "Sensor with dynamic prices",
+          "price_scale": "Conversion factor to EUR/kWh (0.001 for EUR/MWh)",
+          "energy_tax": "Energy tax excl. VAT",
+          "buy_fee": "Supplier markup excl. VAT",
+          "sell_fee": "Fee on export",
+          "vat": "VAT"
+        }
+      },
+      "warmtepomp": {
+        "title": "Heat pump and weather",
+        "description": "With its own kWh counter and an outdoor temperature sensor the EMS learns how much the heat pump uses at which temperature. The weather forecast then gives the expected heating use. Hours in which the EMS had raised the thermostat are left out.",
+        "data": {
+          "hp_energy": "Heat pump consumption (kWh counter)",
+          "outdoor_temp": "Outdoor temperature (sensor, to learn from)",
+          "weather": "Weather forecast"
+        }
+      },
+      "accu_kiezen": {
+        "title": "Choose battery",
+        "data": {
+          "accu": "Battery"
+        }
+      },
+      "accu": {
+        "title": "Battery",
+        "description": "The EMS does not control the battery: set it to its own self-consumption mode (zero at the meter). The EMS only reads charge and power, predicts when it will be full and empty, and lets heat buffers take sun only once the battery has enough.\n\nVirtual: the battery exists only in the calculation and follows the P1 meter like a real battery in self-consumption, so you can see what it would do before buying one.\n\nZendure: read locally via the zenSDK; only the IP address is needed.\n\nVia entities: any other battery, via the sensors of its own integration. The state of charge is required; power keeps the load model clean and shows whether the battery would feed a buffer.",
+        "data": {
+          "name": "Name",
+          "koppeling": "Battery type",
+          "host": "Zendure: IP address of the battery",
+          "capacity_kwh": "Capacity",
+          "max_charge_w": "Maximum charge power",
+          "max_discharge_w": "Maximum discharge power",
+          "min_soc": "Minimum charge",
+          "max_soc": "Maximum charge",
+          "round_trip_efficiency": "Round-trip efficiency",
+          "soc_sensor": "Via entities: state of charge",
+          "power_sensor": "Via entities: power (+ is charging)",
+          "power_invert": "Power sensor is inverted (+ is discharging)",
+          "delete": "Remove this battery"
+        }
+      },
+      "verbruiker_kiezen": {
+        "title": "Choose consumer",
+        "data": {
+          "item": "Consumer"
+        }
+      },
+      "buffer_kiezen": {
+        "title": "Choose shiftable load",
+        "data": {
+          "item": "Load"
+        }
+      },
+      "verbruiker": {
+        "title": "Consumer with its own model",
+        "description": "For a consumer with its own kWh counter, such as a hot tub or charger. The EMS does not control it but learns its use per hour of day and per outdoor temperature and includes that in the forecast.\n\nIf it has a thermostat, also choose the set and measured temperature. The EMS then learns how much it uses when at temperature and when calling for heat, and adjusts the next hours accordingly.",
+        "data": {
+          "name": "Name",
+          "energy": "Consumption (kWh counter)",
+          "setpoint": "Set temperature (optional)",
+          "current_temp": "Measured temperature (optional)",
+          "delete": "Remove this consumer"
+        }
+      },
+      "thermostaat": {
+        "title": "Shift: thermostat",
+        "description": "With surplus solar the EMS temporarily raises the set temperature. The heat pump keeps running and stores heat in the floor; the heating curve stays untouched. Afterwards the EMS restores the previous temperature. If someone (or a schedule) changes the thermostat meanwhile, the EMS leaves it.\n\nThe battery comes first: the buffer may only start once the battery has the minimum charge and there is still enough left. Battery discharge counts as a shortfall, so the battery never feeds the heat pump.\n\nWithout a thermostat entity the EMS only gives a signal (binary sensor '… vrijgegeven').",
+        "data": {
+          "name": "Name",
+          "entity": "Thermostat (climate entity, optional)",
+          "boost_c": "Raise by this many degrees on surplus",
+          "temp_sensor": "Room temperature (sensor; otherwise the thermostat's)",
+          "max_temp": "Not above this room temperature",
+          "power_w": "Expected heat pump power while running",
+          "power_sensor": "Measured heat pump power (optional)",
+          "min_soc_pct": "Only once the battery is at least this full",
+          "start_hour": "Not before (hour of day)",
+          "end_hour": "At the latest until (hour of day)",
+          "need_forecast": "Only if the forecast shows enough surplus for the minimum run time",
+          "order": "Order (1 goes first)",
+          "on_delay_min": "On: surplus must last this long",
+          "off_delay_min": "Off: surplus may fall short this long",
+          "min_on_min": "Minimum run time",
+          "min_off_min": "Minimum rest time",
+          "rest_min": "Off when it draws nothing for this long (0 = don't watch)",
+          "delete": "Remove this load"
+        }
+      },
+      "schakelaar": {
+        "title": "Shift: switch",
+        "description": "A heating element, such as the one in the boiler, is switched on while there is enough solar left after the battery. The tank's own thermostat remains the hard limit; a temperature sensor allows stopping earlier.\n\nThe battery comes first, and battery discharge counts as a shortfall. With a power sensor the EMS sees when the tank is at temperature (the element draws nothing) and passes the surplus to the next load.\n\nWithout a switch entity the EMS only gives a signal (binary sensor '… vrijgegeven').",
+        "data": {
+          "name": "Name",
+          "entity": "Switch (optional)",
+          "power_w": "Power when on",
+          "power_sensor": "Measured power (optional)",
+          "energy": "Consumption (kWh counter, optional; keeps this use out of the load model)",
+          "temp_sensor": "Tank temperature (optional)",
+          "max_temp": "Do not switch on above this temperature",
+          "min_soc_pct": "Only once the battery is at least this full",
+          "start_hour": "Not before (hour of day)",
+          "end_hour": "At the latest until (hour of day)",
+          "need_forecast": "Only if the forecast shows enough surplus for the minimum run time",
+          "order": "Order (1 goes first)",
+          "on_delay_min": "On: surplus must last this long",
+          "off_delay_min": "Off: surplus may fall short this long",
+          "min_on_min": "Minimum run time",
+          "min_off_min": "Minimum rest time",
+          "rest_min": "Off when it draws nothing for this long (0 = don't watch)",
+          "delete": "Remove this load"
+        }
+      }
+    },
+    "error": {
+      "soc_required": "Choose a state of charge sensor.",
+      "cannot_connect": "The battery cannot be reached at this address via the local API."
+    }
+  },
+  "selector": {
+    "tariff_mode": {
+      "options": {
+        "vast": "Fixed tariff",
+        "dynamisch_kaal": "Dynamic: sensor gives the bare market price",
+        "dynamisch_all_in": "Dynamic: sensor gives the price including tax and markup"
+      }
+    },
+    "koppeling": {
+      "options": {
+        "virtueel": "Virtual (simulation only)",
+        "zendure": "Zendure, read locally",
+        "entiteiten": "Other battery, via entities of its integration"
+      }
+    }
+  }
+}

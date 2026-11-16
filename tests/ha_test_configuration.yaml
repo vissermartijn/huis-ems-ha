@@ -1,0 +1,175 @@
+default_config:
+# Alleen voor deze wegwerpomgeving: zonder inloggen binnenkomen, om het dashboard te bekijken.
+homeassistant:
+  time_zone: Europe/Amsterdam
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks:
+        - 0.0.0.0/0
+      allow_bypass_login: true
+    - type: homeassistant
+lovelace:
+  dashboards:
+    ems-test:
+      mode: yaml
+      title: Energiemanagement
+      icon: mdi:home-lightning-bolt
+      show_in_sidebar: true
+      filename: ems_dashboard.yaml
+logger:
+  default: warning
+  logs:
+    custom_components.huis_ems: debug
+input_number:
+  p1:
+    min: -6000
+    max: 9000
+    step: 10
+    initial: 600
+  nep_soc:
+    min: 0
+    max: 100
+    initial: 60
+  hottub_doel:
+    min: 20
+    max: 40
+    initial: 37
+  hottub_temp:
+    min: 0
+    max: 40
+    initial: 37
+  kamer:
+    min: 10
+    max: 30
+    step: 0.1
+    initial: 20.5
+  boiler_w:
+    min: 0
+    max: 3000
+    initial: 0
+  boiler_temp:
+    min: 0
+    max: 90
+    initial: 48
+input_boolean:
+  boiler:
+  kachel:
+# Staat in voor een echte thermostaat: een thermostaat met een ingestelde en een gemeten temperatuur.
+climate:
+  - platform: generic_thermostat
+    name: Woonkamer
+    unique_id: test_woonkamer
+    heater: input_boolean.kachel
+    target_sensor: sensor.kamertemperatuur
+    min_temp: 7
+    max_temp: 28
+    target_temp: 20
+    initial_hvac_mode: heat
+    precision: 0.5
+    target_temp_step: 0.5
+template:
+  - sensor:
+      - name: P1 vermogen
+        unique_id: test_p1
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.p1') | float(0) }}"
+      - name: Kamertemperatuur
+        unique_id: test_kamer
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('input_number.kamer') | float(20) }}"
+      - name: Boilervermogen
+        unique_id: test_boiler_w
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.boiler_w') | float(0) }}"
+      - name: Boiler temperatuur
+        unique_id: test_boiler_temp
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('input_number.boiler_temp') | float(48) }}"
+      - name: Nep accu lading
+        unique_id: test_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state: "{{ states('input_number.nep_soc') | float(0) }}"
+      - name: Teruglevering
+        unique_id: test_exp
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: "1000"
+      - name: Warmtepomp energie
+        unique_id: test_hp
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: "7000"
+      - name: Hottub energie
+        unique_id: test_tub
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: "3000"
+      - name: Hottub temperatuur
+        unique_id: test_tub_temp
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ states('input_number.hottub_temp') | float(37) }}"
+      - name: Buitentemperatuur
+        unique_id: test_temp
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "9"
+      - name: Afname T1
+        unique_id: test_imp
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: "1234.5"
+      - name: Zon opgewekt
+        unique_id: test_pv_energy
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: "{{ (5000 + (now().timestamp() / 3600) % 100) | round(3) }}"
+      - name: Oude zonneteller
+        unique_id: test_pv_old
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        availability: "{{ false }}"
+        state: "0"
+      - name: Testprijzen
+        unique_id: test_prices
+        unit_of_measurement: EUR/kWh
+        state: "0.10"
+        attributes:
+          raw_today: >
+            {% set ns = namespace(items=[]) %}
+            {% set t0 = today_at('00:00') %}
+            {% for h in range(48) %}
+              {% set p = 0.05 + 0.10 * (1 if 17 <= h % 24 < 21 else 0) + 0.04 * (1 if 7 <= h % 24 < 9 else 0) - 0.04 * (1 if 11 <= h % 24 < 15 else 0) %}
+              {% set ns.items = ns.items + [{'start': (t0 + timedelta(hours=h)).isoformat(), 'value': p | round(3)}] %}
+            {% endfor %}
+            {{ ns.items }}
+      - name: Testzon
+        unique_id: test_pv
+        unit_of_measurement: kW
+        state: "0"
+        attributes:
+          forecast: >
+            {% set ns = namespace(items=[]) %}
+            {% set t0 = today_at('00:00') %}
+            {% for h in range(48) %}
+              {% set x = (h % 24 - 8) / 8 %}
+              {% set ns.items = ns.items + [{'period_start': (t0 + timedelta(hours=h)).isoformat(), 'pv_estimate': (3.5 * sin(pi * x) if 0 < x < 1 else 0) | round(2)}] %}
+            {% endfor %}
+            {{ ns.items }}
