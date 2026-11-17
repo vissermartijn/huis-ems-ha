@@ -4,6 +4,7 @@ SLOT_MIN = 15
 WATCHDOG_SECONDS = 5
 NOTIFY_SECONDS = 5
 HISTORY_SLOTS = 192          # 48 uur terugkijken in de attributen
+HISTORY_DAYS = 14            # zo lang bewaart het EMS zijn eigen kwartieren
 STORE_VERSION = 1
 
 # Opties: bronnen
@@ -18,24 +19,12 @@ CONF_HORIZON = "horizon_hours"
 
 # Opties: snelle meting
 CONF_P1_HOST = "p1_host"
-STALE_SECONDS = 20           # zo lang geen meting: geen overschot meer bekend
+STALE_SECONDS = 20           # zo lang geen meting: de meter geldt als verouderd
 SOC_STALE_SECONDS = 900      # een laadtoestand die zo lang niet gemeld is telt niet meer
-
-# Opties: tarieven
-CONF_TARIFF_MODE = "tariff_mode"
-TARIFF_FIXED, TARIFF_SPOT, TARIFF_ALL_IN = "vast", "dynamisch_kaal", "dynamisch_all_in"
-CONF_FIXED_BUY = "fixed_buy"
-CONF_FIXED_SELL = "fixed_sell"
-CONF_PRICE_SENSOR = "price_sensor"
-CONF_PRICE_SCALE = "price_scale"
-CONF_ENERGY_TAX = "energy_tax"
-CONF_BUY_FEE = "buy_fee"
-CONF_SELL_FEE = "sell_fee"
-CONF_VAT = "vat"
-CONF_NET_METERING = "salderen"
 
 # Opties: warmtepomp en weer
 CONF_HP_ENERGY = "hp_energy"
+CONF_DHW_ACTIVE = "dhw_active"   # binary_sensor: warmtepomp maakt tapwater
 CONF_OUTDOOR_TEMP = "outdoor_temp"
 CONF_WEATHER = "weather"
 
@@ -50,26 +39,25 @@ DRIVER_VIRTUAL, DRIVER_ZENDURE, DRIVER_ENTITIES = "virtueel", "zendure", "entite
 
 DEFAULT_SETTINGS = {
     "pv_factor": 1.0,
-    "stage2": False,          # verschuifbaar verbruik echt schakelen (uit: alleen advies)
 }
 
-# Verbruikers met een eigen model (alleen voorspellen, niet regelen)
+# Verbruikers met een eigen meter en een eigen model (bijvoorbeeld een hottub)
 CONF_CONSUMERS = "consumers"
 C_ID, C_NAME, C_ENERGY = "id", "name", "energy"
 C_SETPOINT, C_CURRENT = "setpoint", "current_temp"
 THERMOSTAT_BAND = 0.3        # graden onder de ingestelde temperatuur waarbij hij warmte vraagt
 
-# Verschuifbaar verbruik: warmtebuffers die zonnestroom opnemen als de accu vol is.
-# (De sleutel heet nog stage2_loads, van de tweede trap uit een eerdere versie.)
-CONF_STAGE2 = "stage2_loads"
-L_ID, L_NAME, L_ENTITY, L_POWER, L_KIND = "id", "name", "entity", "power_w", "soort"
-L_POWER_SENSOR, L_ENERGY, L_ORDER = "power_sensor", "energy", "order"
-L_ON_DELAY, L_OFF_DELAY, L_MIN_ON, L_MIN_OFF = (
-    "on_delay_min", "off_delay_min", "min_on_min", "min_off_min")
-L_MIN_SOC, L_TEMP, L_MAX_TEMP, L_BOOST = "min_soc_pct", "temp_sensor", "max_temp", "boost_c"
-L_START, L_END, L_FORECAST, L_REST = "start_hour", "end_hour", "need_forecast", "rest_min"
-SPARE_SMOOTH_SECONDS = 30    # het overschot wordt zo lang uitgemiddeld
-SWITCH_CONFIRM_SECONDS = 30  # zo lang mag een schakelaar erover doen om de nieuwe stand te melden
-SWITCH_TRIES = 3             # zo vaak wordt een schakelopdracht geprobeerd
-HANDS_OFF_SECONDS = 7200     # na een handmatige wijziging zo lang niet opnieuw beginnen
-BOOST_DAYS_KEPT = 400       # zo veel dagen onthouden in welke uren de thermostaat hoger stond
+# Apparaten met programma's (Home Connect): wasmachine, vaatwasser, droger
+CONF_APPLIANCES = "appliances"
+A_ID, A_NAME, A_KIND = "id", "name", "soort"
+A_STATE, A_FINISH, A_ENERGY = "state", "finish_time", "energy"
+A_KWH, A_MINUTES = "kwh_per_cycle", "minutes"
+KINDS = ["wasmachine", "vaatwasser", "droger", "overig"]
+RUN_STATES = {"run", "pause", "on"}          # programma loopt (Home Connect, of een binary_sensor)
+DELAYED_STATES = {"delayedstart"}            # programma staat op uitgestelde start
+CYCLE_DAYS = 28              # zo ver terug leert het EMS de gewoontes (zover de recorder reikt)
+
+# Hoe lang een afwijking van nu nog doorwerkt in de voorspelling (halfwaardetijd, uren)
+PERSIST_REST_H = 1.0
+PERSIST_HEATING_H = 3.0
+MAX_ANOMALY_W = 1500

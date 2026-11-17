@@ -12,7 +12,7 @@ lovelace:
   dashboards:
     ems-test:
       mode: yaml
-      title: Energiemanagement
+      title: Energievoorspelling
       icon: mdi:home-lightning-bolt
       show_in_sidebar: true
       filename: ems_dashboard.yaml
@@ -38,35 +38,16 @@ input_number:
     min: 0
     max: 40
     initial: 37
-  kamer:
-    min: 10
-    max: 30
-    step: 0.1
-    initial: 20.5
-  boiler_w:
+  vaat_klaar_min:
     min: 0
-    max: 3000
-    initial: 0
-  boiler_temp:
-    min: 0
-    max: 90
-    initial: 48
+    max: 600
+    initial: 240
+input_select:
+  vaatwasser:
+    options: [inactive, ready, delayedstart, run, pause, finished]
+    initial: ready
 input_boolean:
-  boiler:
-  kachel:
-# Staat in voor een echte thermostaat: een thermostaat met een ingestelde en een gemeten temperatuur.
-climate:
-  - platform: generic_thermostat
-    name: Woonkamer
-    unique_id: test_woonkamer
-    heater: input_boolean.kachel
-    target_sensor: sensor.kamertemperatuur
-    min_temp: 7
-    max_temp: 28
-    target_temp: 20
-    initial_hvac_mode: heat
-    precision: 0.5
-    target_temp_step: 0.5
+  tapwater:
 template:
   - sensor:
       - name: P1 vermogen
@@ -75,24 +56,15 @@ template:
         device_class: power
         state_class: measurement
         state: "{{ states('input_number.p1') | float(0) }}"
-      - name: Kamertemperatuur
-        unique_id: test_kamer
-        unit_of_measurement: "°C"
-        device_class: temperature
-        state_class: measurement
-        state: "{{ states('input_number.kamer') | float(20) }}"
-      - name: Boilervermogen
-        unique_id: test_boiler_w
-        unit_of_measurement: W
-        device_class: power
-        state_class: measurement
-        state: "{{ states('input_number.boiler_w') | float(0) }}"
-      - name: Boiler temperatuur
-        unique_id: test_boiler_temp
-        unit_of_measurement: "°C"
-        device_class: temperature
-        state_class: measurement
-        state: "{{ states('input_number.boiler_temp') | float(48) }}"
+      - name: Vaatwasser bedrijfstoestand
+        unique_id: test_vaat_state
+        device_class: enum
+        state: "{{ states('input_select.vaatwasser') }}"
+      - name: Vaatwasser klaar
+        unique_id: test_vaat_finish
+        device_class: timestamp
+        availability: "{{ states('input_select.vaatwasser') in ['delayedstart', 'run', 'pause', 'finished'] }}"
+        state: "{{ (now() + timedelta(minutes=states('input_number.vaat_klaar_min') | int(0))).isoformat() }}"
       - name: Nep accu lading
         unique_id: test_soc
         unit_of_measurement: "%"
@@ -147,19 +119,6 @@ template:
         state_class: total_increasing
         availability: "{{ false }}"
         state: "0"
-      - name: Testprijzen
-        unique_id: test_prices
-        unit_of_measurement: EUR/kWh
-        state: "0.10"
-        attributes:
-          raw_today: >
-            {% set ns = namespace(items=[]) %}
-            {% set t0 = today_at('00:00') %}
-            {% for h in range(48) %}
-              {% set p = 0.05 + 0.10 * (1 if 17 <= h % 24 < 21 else 0) + 0.04 * (1 if 7 <= h % 24 < 9 else 0) - 0.04 * (1 if 11 <= h % 24 < 15 else 0) %}
-              {% set ns.items = ns.items + [{'start': (t0 + timedelta(hours=h)).isoformat(), 'value': p | round(3)}] %}
-            {% endfor %}
-            {{ ns.items }}
       - name: Testzon
         unique_id: test_pv
         unit_of_measurement: kW
@@ -173,3 +132,7 @@ template:
               {% set ns.items = ns.items + [{'period_start': (t0 + timedelta(hours=h)).isoformat(), 'pv_estimate': (3.5 * sin(pi * x) if 0 < x < 1 else 0) | round(2)}] %}
             {% endfor %}
             {{ ns.items }}
+  - binary_sensor:
+      - name: Tapwater bezig
+        unique_id: test_dhw
+        state: "{{ is_state('input_boolean.tapwater', 'on') }}"

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Huis EMS instellen",
-        "description": "Kies de meters die je al in Home Assistant hebt. Meters uit het Energie-dashboard zijn alvast ingevuld. Tarieven, warmtepomp, accu's en verschuifbaar verbruik stel je daarna in via Configureren.",
+        "description": "Kies de meters die je al in Home Assistant hebt. Meters uit het Energie-dashboard zijn alvast ingevuld. Warmtepomp, accu's, verbruikers en apparaten stel je daarna in via Configureren.",
         "data": {
           "p1_power": "Actueel netvermogen (P1-meter, + is afname)",
           "import_energy": "Afname van het net (kWh-tellers, bv. tarief 1 en 2)",
@@ -27,15 +27,13 @@
         "menu_options": {
           "bronnen": "Meters en zonvoorspelling",
           "net": "Snelle meting (HomeWizard P1)",
-          "tarieven": "Tarieven",
           "warmtepomp": "Warmtepomp en weer",
           "accu_toevoegen": "Accu toevoegen",
           "accu_kiezen": "Accu wijzigen of verwijderen",
           "verbruiker_toevoegen": "Verbruiker met eigen model toevoegen",
           "verbruiker_kiezen": "Verbruiker met eigen model wijzigen of verwijderen",
-          "thermostaat_toevoegen": "Verschuiven: thermostaat toevoegen (bv. vloerverwarming)",
-          "schakelaar_toevoegen": "Verschuiven: schakelaar toevoegen (bv. boilerelement)",
-          "buffer_kiezen": "Verschuiven: wijzigen of verwijderen"
+          "apparaat_toevoegen": "Apparaat met programma's toevoegen (bv. wasmachine, vaatwasser)",
+          "apparaat_kiezen": "Apparaat wijzigen of verwijderen"
         }
       },
       "bronnen": {
@@ -54,32 +52,17 @@
       },
       "net": {
         "title": "Snelle meting",
-        "description": "Optioneel: het EMS leest de HomeWizard P1-meter elke seconde rechtstreeks uit, binnen je eigen netwerk. Vul daarvoor het IP-adres in; de lokale API moet aan staan in de HomeWizard-app. Zonder adres volgt het EMS de sensor van Home Assistant (elke 5 seconden); voor het schakelen van warmtebuffers is dat ruim voldoende.",
+        "description": "Optioneel: het EMS leest de HomeWizard P1-meter elke seconde rechtstreeks uit, binnen je eigen netwerk. Vul daarvoor het IP-adres in; de lokale API moet aan staan in de HomeWizard-app. Zonder adres volgt het EMS de sensor van Home Assistant (elke 5 seconden); voor het voorspellen is dat ruim voldoende.",
         "data": {
           "p1_host": "IP-adres van de HomeWizard P1-meter (optioneel)"
         }
       },
-      "tarieven": {
-        "title": "Tarieven",
-        "description": "Bij een vast tarief gelden alleen de twee vaste prijzen. Bij dynamisch kies je een sensor met de uurprijzen in zijn attributen (Nord Pool, ENTSO-e of je leverancier). De prijzen bepalen welke uren in de vooruitblik als duur gelden.",
-        "data": {
-          "tariff_mode": "Soort tarief",
-          "salderen": "Salderen (teruglevering is evenveel waard als afname)",
-          "fixed_buy": "Vast tarief: afname",
-          "fixed_sell": "Vast tarief: teruglevering (netto)",
-          "price_sensor": "Sensor met dynamische prijzen",
-          "price_scale": "Omrekenfactor naar EUR/kWh (0,001 bij EUR/MWh)",
-          "energy_tax": "Energiebelasting excl. btw",
-          "buy_fee": "Inkoopopslag leverancier excl. btw",
-          "sell_fee": "Afdracht op teruglevering",
-          "vat": "Btw"
-        }
-      },
       "warmtepomp": {
         "title": "Warmtepomp en weer",
-        "description": "Met een eigen kWh-teller en een buitentemperatuursensor leert het EMS hoeveel de warmtepomp verbruikt bij welke temperatuur. De weersverwachting bepaalt dan het verwachte stookverbruik. Uren waarin het EMS de thermostaat hoger had gezet tellen niet mee.",
+        "description": "Met een eigen kWh-teller en een buitentemperatuursensor leert het EMS hoeveel de warmtepomp verbruikt bij welke temperatuur. De weersverwachting bepaalt dan het verwachte stookverbruik.\n\nKies ook de melding dat de warmtepomp tapwater maakt (bijvoorbeeld 'Domestic hot water in progress'). Dan splitst het EMS het verbruik in verwarmen en tapwater: verwarmen hangt af van de temperatuur, tapwater volgt een dagpatroon dat het EMS uit de afgelopen weken leert.",
         "data": {
           "hp_energy": "Verbruik warmtepomp (kWh-teller)",
+          "dhw_active": "Warmtepomp maakt tapwater (binaire sensor, optioneel)",
           "outdoor_temp": "Buitentemperatuur (sensor, om van te leren)",
           "weather": "Weersverwachting"
         }
@@ -92,7 +75,7 @@
       },
       "accu": {
         "title": "Accu",
-        "description": "Het EMS stuurt de accu niet aan: stel hem in op zijn eigen zelfverbruik (nul op de meter). Het EMS leest alleen de lading en het vermogen uit, rekent vooruit wanneer hij vol en leeg raakt, en laat warmtebuffers pas zon opnemen als de accu genoeg heeft.\n\nVirtueel: de accu bestaat alleen in de berekening en volgt de P1-meter zoals een echte accu op zelfverbruik, zodat je ziet wat hij zou doen voordat je er een koopt.\n\nZendure: lokaal uitlezen via de zenSDK; alleen het IP-adres is nodig.\n\nVia entiteiten: elke andere accu, via de sensoren van zijn eigen integratie. De laadtoestand is verplicht; het vermogen is nodig om het verbruiksmodel zuiver te houden en om te zien of de accu een buffer zou voeden.",
+        "description": "Het EMS stuurt de accu niet aan: stel hem in op zijn eigen zelfverbruik (nul op de meter). Het EMS leest alleen de lading en het vermogen uit en rekent vooruit wanneer hij vol en leeg raakt.\n\nVirtueel: de accu bestaat alleen in de berekening en volgt de P1-meter zoals een echte accu op zelfverbruik, zodat je ziet wat hij zou doen voordat je er een koopt.\n\nZendure: lokaal uitlezen via de zenSDK; alleen het IP-adres is nodig.\n\nVia entiteiten: elke andere accu, via de sensoren van zijn eigen integratie. De laadtoestand is verplicht; het vermogen is nodig om het verbruiksmodel zuiver te houden.",
         "data": {
           "name": "Naam",
           "koppeling": "Soort accu",
@@ -115,12 +98,6 @@
           "item": "Verbruiker"
         }
       },
-      "buffer_kiezen": {
-        "title": "Verschuifbare verbruiker kiezen",
-        "data": {
-          "item": "Verbruiker"
-        }
-      },
       "verbruiker": {
         "title": "Verbruiker met eigen model",
         "description": "Voor een verbruiker met een eigen kWh-teller, zoals een hottub of laadpaal. Het EMS regelt hem niet, maar leert zijn verbruik per uur van de dag en bij welke buitentemperatuur, en neemt dat mee in de voorspelling.\n\nHeeft de verbruiker een thermostaat, kies dan ook de ingestelde en de gemeten temperatuur. Het EMS leert dan hoeveel hij verbruikt als hij op temperatuur is en hoeveel als hij warmte vraagt, en stelt de eerstkomende uren daarop bij.",
@@ -132,52 +109,24 @@
           "delete": "Deze verbruiker verwijderen"
         }
       },
-      "thermostaat": {
-        "title": "Verschuiven: thermostaat",
-        "description": "Bij zonoverschot zet het EMS de ingestelde temperatuur tijdelijk wat hoger. De warmtepomp blijft dan doorlopen en pompt warmte in de vloer; de stooklijn blijft ongemoeid. Daarna zet het EMS de temperatuur terug naar wat er stond. Wijzigt iemand (of een schema) de thermostaat in de tussentijd, dan laat het EMS hem zo.\n\nDe accu gaat voor: de buffer mag pas aan als de accu de minimale lading heeft en er daarna nog genoeg over is. Ontlaadt de accu, dan telt dat als tekort, zodat de accu nooit de warmtepomp voedt.\n\nZonder thermostaat-entiteit geeft het EMS alleen een signaal (binaire sensor '… vrijgegeven').",
+      "apparaat_kiezen": {
+        "title": "Apparaat kiezen",
         "data": {
-          "name": "Naam",
-          "entity": "Thermostaat (climate-entiteit, optioneel)",
-          "boost_c": "Zoveel graden hoger bij overschot",
-          "temp_sensor": "Ruimtetemperatuur (sensor; anders die van de thermostaat)",
-          "max_temp": "Niet hoger dan deze ruimtetemperatuur",
-          "power_w": "Verwacht vermogen van de warmtepomp als hij draait",
-          "power_sensor": "Gemeten vermogen van de warmtepomp (optioneel)",
-          "min_soc_pct": "Pas als de accu minstens zo vol is",
-          "start_hour": "Niet eerder dan (uur van de dag)",
-          "end_hour": "Uiterlijk tot (uur van de dag)",
-          "need_forecast": "Alleen als de voorspelling genoeg overschot toont voor de minimale draaitijd",
-          "order": "Volgorde (1 gaat als eerste)",
-          "on_delay_min": "Aan: zo lang moet er genoeg overschot zijn",
-          "off_delay_min": "Uit: zo lang mag het overschot tekortschieten",
-          "min_on_min": "Minimale draaitijd",
-          "min_off_min": "Minimale rusttijd",
-          "rest_min": "Uit als hij zo lang niets afneemt (0 = niet bewaken)",
-          "delete": "Deze verbruiker verwijderen"
+          "item": "Apparaat"
         }
       },
-      "schakelaar": {
-        "title": "Verschuiven: schakelaar",
-        "description": "Een verwarmingselement, zoals dat in de boiler, gaat aan zolang er na de accu genoeg zon over is. De eigen thermostaat van het vat blijft de harde grens; een temperatuursensor maakt het mogelijk om eerder te stoppen.\n\nDe accu gaat voor, en ontladen van de accu telt als tekort. Met een vermogenssensor ziet het EMS wanneer het vat op temperatuur is (het element neemt dan niets meer af) en geeft het overschot door aan de volgende.\n\nZonder schakelaar-entiteit geeft het EMS alleen een signaal (binaire sensor '… vrijgegeven').",
+      "apparaat": {
+        "title": "Apparaat met programma's",
+        "description": "Voor een wasmachine, vaatwasser of droger, bijvoorbeeld via Home Connect. Kies de bedrijfstoestand (Operation state): loopt er een programma of staat het op uitgestelde start, dan plant het EMS het verbruik daar in, tot de eindtijd als je die ook kiest (Program finish time).\n\nDaarnaast leert het EMS uit de afgelopen weken hoe vaak en op welk uur het apparaat meestal start, en neemt het die gewoonte mee in de voorspelling.\n\nZonder eigen kWh-meter schat het EMS het verbruik per keer uit wat het huis meer verbruikt terwijl het apparaat draait; tot dat geleerd is, geldt het standaardverbruik hieronder.",
         "data": {
           "name": "Naam",
-          "entity": "Schakelaar (optioneel)",
-          "power_w": "Vermogen als hij aan staat",
-          "power_sensor": "Gemeten vermogen (optioneel)",
-          "energy": "Verbruik (kWh-teller, optioneel; houdt dit verbruik buiten het verbruiksmodel)",
-          "temp_sensor": "Temperatuur van het vat (optioneel)",
-          "max_temp": "Niet aanzetten boven deze temperatuur",
-          "min_soc_pct": "Pas als de accu minstens zo vol is",
-          "start_hour": "Niet eerder dan (uur van de dag)",
-          "end_hour": "Uiterlijk tot (uur van de dag)",
-          "need_forecast": "Alleen als de voorspelling genoeg overschot toont voor de minimale draaitijd",
-          "order": "Volgorde (1 gaat als eerste)",
-          "on_delay_min": "Aan: zo lang moet er genoeg overschot zijn",
-          "off_delay_min": "Uit: zo lang mag het overschot tekortschieten",
-          "min_on_min": "Minimale draaitijd",
-          "min_off_min": "Minimale rusttijd",
-          "rest_min": "Uit als hij zo lang niets afneemt (0 = niet bewaken)",
-          "delete": "Deze verbruiker verwijderen"
+          "soort": "Soort apparaat",
+          "state": "Bedrijfstoestand (of een binaire sensor die aan is zolang hij draait)",
+          "finish_time": "Eindtijd van het programma (optioneel)",
+          "energy": "Verbruik (kWh-teller, optioneel)",
+          "kwh_per_cycle": "Verbruik per keer tot het geleerd is (optioneel)",
+          "minutes": "Duur van een programma tot het geleerd is (optioneel)",
+          "delete": "Dit apparaat verwijderen"
         }
       }
     },
@@ -187,18 +136,19 @@
     }
   },
   "selector": {
-    "tariff_mode": {
-      "options": {
-        "vast": "Vast tarief",
-        "dynamisch_kaal": "Dynamisch: sensor geeft de kale beursprijs",
-        "dynamisch_all_in": "Dynamisch: sensor geeft de prijs inclusief belasting en opslag"
-      }
-    },
     "koppeling": {
       "options": {
         "virtueel": "Virtueel (alleen simuleren)",
         "zendure": "Zendure, lokaal uitlezen",
         "entiteiten": "Andere accu, via entiteiten van zijn integratie"
+      }
+    },
+    "soort": {
+      "options": {
+        "wasmachine": "Wasmachine",
+        "vaatwasser": "Vaatwasser",
+        "droger": "Droger",
+        "overig": "Overig"
       }
     }
   }

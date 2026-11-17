@@ -31,33 +31,35 @@ def sample_states():
     now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     start = now - timedelta(minutes=now.minute % 15)
     n = 144
+    names = ["warmtepomp verwarmen", "warmtepomp tapwater", "Hottub", "Wasmachine", "Vaatwasser", "overig"]
     plan = {
         "start": start.isoformat(), "stap_min": 15,
         "zon_w": [max(0, 2000 - abs(i - 40) * 80) for i in range(n)],
         "verbruik_w": [500 + (i % 8) * 20 for i in range(n)],
-        "warmtepomp_w": [200] * n,
+        "onderdelen_w": {name: [100 + j * 10] * n for j, name in enumerate(names)},
         "net_w": [300 - (i % 50) * 30 for i in range(n)],
+        "accu_w": [0] * n,
         "soc_pct": [min(100, 20 + i) for i in range(n)],
-        "koop": [0.20 + (0.15 if 68 <= i % 96 < 84 else 0) for i in range(n)],
     }
     rows = []
     for i in range(192, 0, -1):
         t = start - timedelta(minutes=15 * i)
-        row = {"t": t.isoformat(), "koop": 0.25, "soc_pct": 50, "verwacht_verbruik_w": 600,
+        row = {"t": t.isoformat(), "soc_pct": 50, "verwacht_verbruik_w": 600,
                "verwacht_zon_w": 800, "verwacht_net_w": -100, "verwacht_accu_w": 0,
-               "verschoven_min": {"Boiler": 12} if i % 10 == 0 else {}}
+               "verwacht": {name: 100 for name in names}, "basis": {"rest": 300},
+               "etmaal_verbruik_w": 650 if i < 120 else None, "etmaal_zon_w": 700 if i < 120 else None,
+               "etmaal_soc_pct": 40 if i < 120 else None}
         if i % 7:   # niet elk kwartier is volledig gemeten
-            row.update(net_w=-200, net_zonder_accu_w=-300, werkelijk_zon_w=900, werkelijk_verbruik_w=600)
+            row.update(net_w=-200, net_zonder_accu_w=-300, werkelijk_zon_w=900, werkelijk_verbruik_w=600,
+                       werkelijk={name: 100 for name in names})
         rows.append(row)
     full = {
         "sensor.huis_ems_plan": {"state": "1.2", "attributes": plan},
         "sensor.huis_ems_terugblik": {"state": "192", "attributes": {"kwartieren": rows}},
-        "sensor.huis_ems_vooruitblik": {"state": "x", "attributes": {"dure_uren_vanaf_eur": 0.3}},
     }
     empty = {
         "sensor.huis_ems_plan": {"state": "unknown", "attributes": {}},
         "sensor.huis_ems_terugblik": {"state": "0", "attributes": {}},
-        "sensor.huis_ems_vooruitblik": {"state": "x", "attributes": {"dure_uren_vanaf_eur": None}},
     }
     window = [(start - timedelta(hours=25)).timestamp() * 1000, (start + timedelta(hours=37)).timestamp() * 1000]
     return {"vol": full, "leeg": empty}, window
@@ -93,8 +95,7 @@ def main():
                          text=True, check=True)
     failed = 0
     for r in json.loads(res.stdout):
-        good = "error" not in r and r["okShape"] and r["inWindow"] and (r["label"] == "leeg" or r["n"] > 0
-                                                                         or r["name"] == "Duur")
+        good = "error" not in r and r["okShape"] and r["inWindow"] and (r["label"] == "leeg" or r["n"] > 0)
         failed += not good
         print(("ok  " if good else "FOUT"), f"{r['name']:<20} {r['label']:<5}", r.get("error") or f"{r['n']} punten")
     print(f"{len(cases)} generators, {failed} fout")

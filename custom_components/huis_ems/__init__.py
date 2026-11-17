@@ -1,4 +1,4 @@
-"""Huis EMS: voorspelt verbruik, zon en accu, en verschuift verbruik naar de zon."""
+"""Huis EMS: voorspelt verbruik per onderdeel, de zon en wat de accu doet."""
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
@@ -11,7 +11,7 @@ import os
 from .const import DOMAIN
 from .coordinator import EmsCoordinator
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SWITCH, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.NUMBER]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -30,7 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def _remove_stale_entities(hass: HomeAssistant, entry: ConfigEntry, current: set[str]) -> None:
-    """Ruimt entiteiten op die deze versie niet meer maakt (bijvoorbeeld van de accusturing)."""
+    """Ruimt entiteiten op die deze versie niet meer maakt (bijvoorbeeld van het verschuiven)."""
     registry = er.async_get(hass)
     for item in er.async_entries_for_config_entry(registry, entry.entry_id):
         if item.unique_id not in current:

@@ -1,17 +1,25 @@
-/* Huis EMS: overzichtskaart met tijdlijn (terug en vooruit).
+/* Huis EMS: overzichtskaart met tijdlijn van gemeten, voorspeld, nu en vooruit.
  * Geen afhankelijkheden. Gebruik in een dashboard:  type: custom:huis-ems-card
  * Opties: prefix (standaard "huis_ems"), hours_back (standaard 24).
  */
 const SVG = "http://www.w3.org/2000/svg";
-const SERIES = [
+const MAIN = [
   { key: "verbruik", label: "Verbruik", light: "#2a78d6", dark: "#3987e5" },
-  { key: "zon", label: "Zon", light: "#eb6834", dark: "#d95926" },
-  { key: "net", label: "Net (met accu)", light: "#1baf7a", dark: "#199e70" },
+  { key: "zon", label: "Opwek zon", light: "#eb6834", dark: "#d95926" },
 ];
+// Onderdelen in vaste volgorde (kleur hoort bij het onderdeel, niet bij de rangorde);
+// "overig" is altijd grijs.
+const PARTS = [
+  { light: "#1baf7a", dark: "#199e70" }, { light: "#eda100", dark: "#c98500" },
+  { light: "#e87ba4", dark: "#d55181" }, { light: "#008300", dark: "#0ca30c" },
+  { light: "#6250d6", dark: "#9085e9" }, { light: "#e34948", dark: "#e66767" },
+];
+const OTHER = { light: "#9a9993", dark: "#6f6e69" };
 const QUARTER = 900000;
 const nl = (v, d = 0) => (v == null || isNaN(v) ? "–" : Number(v).toLocaleString("nl-NL", {
   minimumFractionDigits: d, maximumFractionDigits: d }));
 const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }) : null);
+const pick = (...values) => values.find((v) => v != null);
 
 function el(tag, attrs = {}, ...children) {
   const svg = ["svg", "g", "path", "rect", "line", "text", "circle"].includes(tag);
@@ -32,7 +40,7 @@ class HuisEmsCard extends HTMLElement {
     this._observer = new ResizeObserver(() => { this._chartDirty = true; this._draw(); });
   }
 
-  getCardSize() { return 10; }
+  getCardSize() { return 12; }
   getGridOptions() { return { columns: "full", min_columns: 6 }; }
 
   set hass(hass) {
@@ -41,9 +49,9 @@ class HuisEmsCard extends HTMLElement {
       const s = hass.states[id.replace("%", this.config.prefix)];
       return s ? s.last_updated : "";
     }).join("|") + hass.themes.darkMode;
-    const top = stamp(["sensor.%_vooruitblik", "sensor.%_net_met_accu", "sensor.%_verschuifbaar_verbruik",
-      "sensor.%_besparing_vandaag", "sensor.%_voorspelkwaliteit"]);
-    const chart = stamp(["sensor.%_plan", "sensor.%_terugblik"]);
+    const top = stamp(["sensor.%_vooruitblik", "sensor.%_verbruik_dit_kwartier", "sensor.%_voorspelkwaliteit",
+      "sensor.%_accu_lading"]);
+    const chart = stamp(["sensor.%_plan", "sensor.%_terugblik", "sensor.%_verbruik_dit_kwartier"]);
     if (top !== this._top || chart !== this._chartStamp) {
       this._chartDirty = this._chartDirty || chart !== this._chartStamp;
       this._top = top; this._chartStamp = chart;
@@ -61,23 +69,39 @@ class HuisEmsCard extends HTMLElement {
     const plan = (this._state("plan") || {}).attributes || {};
     const back = ((this._state("terugblik") || {}).attributes || {}).kwartieren || [];
     const from = Date.now() - this.config.hours_back * 3600000;
+    const names = [];
+    const add = (obj) => Object.keys(obj || {}).forEach((n) => { if (!names.includes(n)) names.push(n); });
+    add(plan.onderdelen_w);
     const points = [];
     for (const r of back) {
       const t = new Date(r.t).getTime();
       if (t < from) continue;
-      const moved = Object.entries(r.verschoven_min || {}).map(([n, m]) => `${n} ${m} min`).join(", ");
-      points.push({ t, future: false, soc: r.soc_pct, koop: r.koop,
+      add(r.werkelijk);
+      points.push({ t, future: false, soc: r.soc_pct, socP: r.etmaal_soc_pct,
         verbruik: r.werkelijk_verbruik_w, zon: r.werkelijk_zon_w, net: r.net_w,
-        verbruikV: r.verwacht_verbruik_w, zonV: r.verwacht_zon_w, netV: r.verwacht_net_w, moved });
+        verbruikP: pick(r.etmaal_verbruik_w, r.verwacht_verbruik_w), verbruikN: r.verwacht_verbruik_w,
+        zonP: pick(r.etmaal_zon_w, r.verwacht_zon_w), zonN: r.verwacht_zon_w,
+        dayAhead: r.etmaal_verbruik_w != null, parts: r.werkelijk || null, partsP: r.etmaal || r.verwacht || {} });
     }
     if (plan.zon_w) {
       const start = new Date(plan.start).getTime();
-      plan.zon_w.forEach((zon, i) => points.push({ t: start + i * QUARTER, future: true,
-        soc: plan.soc_pct && plan.soc_pct.length ? plan.soc_pct[i] : null, koop: plan.koop[i],
-        verbruikV: plan.verbruik_w[i], zonV: zon, netV: plan.net_w[i], accu: plan.accu_w[i],
-        wp: plan.warmtepomp_w[i], geschat: (plan.prijs_herkomst || [])[i] === "geschat" }));
+      const parts = plan.onderdelen_w || {};
+      plan.zon_w.forEach((zon, i) => {
+        const p = {};
+        for (const n of Object.keys(parts)) p[n] = parts[n][i];
+        points.push({ t: start + i * QUARTER, future: true,
+          socP: plan.soc_pct && plan.soc_pct.length ? plan.soc_pct[i] : null,
+          verbruikP: plan.verbruik_w[i], zonP: zon, netP: plan.net_w[i], accu: plan.accu_w[i], partsP: p });
+      });
     }
-    return points;
+    // Overig altijd als laatste: grijs, bovenop de stapel.
+    const ordered = names.filter((n) => n !== "overig").concat(names.includes("overig") ? ["overig"] : []);
+    return { points, names: ordered };
+  }
+
+  _partColor(names, name, tone) {
+    if (name === "overig") return tone(OTHER);
+    return tone(PARTS[names.filter((n) => n !== "overig").indexOf(name) % PARTS.length]);
   }
 
   _draw() {
@@ -100,33 +124,33 @@ class HuisEmsCard extends HTMLElement {
     }
     const a = look.attributes;
 
-    // Kop: wat de komende uren brengen, en wat er nu speelt.
     const head = el("div", { class: "head" });
     head.append(el("div", { class: "title", text: "Vooruitblik" }));
     head.append(el("p", { class: "why", text: a.tekst || look.state }));
     if (a.status) head.append(el("p", { class: "why status", text: a.status }));
-    const facts = [];
-    if (a.meter_leeftijd_s != null) facts.push(`P1 ${a.meterbron || ""}, ${nl(a.meter_leeftijd_s)} s oud`);
-    if (a.dure_uren_vanaf_eur != null) facts.push(`dure uren vanaf € ${nl(a.dure_uren_vanaf_eur, 2)}`);
-    if (facts.length) head.append(el("p", { class: "sub", text: facts.join(" · ") }));
     card.append(head);
 
     // Kerncijfers.
-    const quality = this._state("voorspelkwaliteit");
-    const q = quality ? quality.attributes : {};
+    const now = (this._state("verbruik_dit_kwartier") || {}).attributes || {};
+    const q = (this._state("voorspelkwaliteit") || {}).attributes || {};
     const soc = this._num("accu_lading");
     const full = clock(a.accu_vol_om), empty = clock(a.accu_leeg_om);
+    const parts24 = ((this._state("verwacht_verbruik_komende_24_uur") || {}).attributes || {}).onderdelen || {};
+    const biggest = Object.entries(parts24).sort((x, y) => y[1] - x[1]).slice(0, 2)
+      .map(([n, v]) => `${n} ${nl(v, 1)}`).join(" · ");
     const tiles = [
+      ["Nu (dit kwartier)", now.verbruik_w != null ? `${nl(now.verbruik_w)} W verbruik` : "–",
+        `${nl(now.zon_w)} W zon · net ${nl(now.net_w)} W`],
       ["Accu", soc == null ? "–" : `${nl(soc)} %`,
         [full ? `vol ${full}` : null, empty ? `leeg ${empty}` : null].filter(Boolean).join(" · ") || `${nl(this._num("accu_vermogen"))} W`],
-      ["Net nu", `${nl(this._num("net_met_accu"))} W`, `zonder accu ${nl(this._num("net_zonder_accu"))} W`],
-      ["Komende 24 uur", `${nl(this._num("verwacht_van_het_net_komende_24_uur"), 1)} kWh van het net`,
-        `${nl(this._num("verwachte_teruglevering_komende_24_uur"), 1)} kWh terug · ${nl(a.net_dure_uren_kwh, 1)} kWh in dure uren`],
       ["Verwacht 24 uur", `${nl(this._num("verwacht_verbruik_komende_24_uur"), 1)} kWh verbruik`,
-        `${nl(this._num("verwachte_zon_komende_24_uur"), 1)} kWh zon · ${nl(this._num("verwacht_warmtepompverbruik_komende_24_uur"), 1)} kWh warmtepomp`],
-      ["Voorspelling", q.kwartieren ? `± ${nl(q.verbruik_gemiddelde_afwijking_w)} W` : "bouwt op",
-        q.kwartieren ? `verbruik per kwartier${q.zon_werkelijk_gedeeld_door_verwacht != null ? ` · zon ${nl(q.zon_werkelijk_gedeeld_door_verwacht * 100)} % van verwacht` : ""}` : "na een paar kwartieren"],
-      ["Inkoopprijs nu", `€ ${nl(this._num("inkoopprijs_nu"), 3)}`, `teruglevering € ${nl(this._num("terugleverprijs_nu"), 3)}`],
+        biggest ? `waarvan ${biggest} kWh` : `${nl(this._num("verwachte_zon_komende_24_uur"), 1)} kWh zon`],
+      ["Zon en net 24 uur", `${nl(this._num("verwachte_zon_komende_24_uur"), 1)} kWh zon`,
+        `${nl(this._num("verwacht_van_het_net_komende_24_uur"), 1)} kWh van het net · ${nl(this._num("verwachte_teruglevering_komende_24_uur"), 1)} kWh terug`],
+      ["Voorspelling", q.verbruik_etmaal_vooraf_afwijking_w != null ? `± ${nl(q.verbruik_etmaal_vooraf_afwijking_w)} W`
+        : q.kwartieren ? `± ${nl(q.verbruik_afwijking_w)} W` : "bouwt op",
+        q.verbruik_etmaal_vooraf_afwijking_w != null ? `per kwartier, een etmaal vooraf · vlak vooraf ± ${nl(q.verbruik_afwijking_w)} W`
+          : q.kwartieren ? "per kwartier, vlak vooraf" : "na een paar kwartieren"],
     ];
     const grid = el("div", { class: "tiles" });
     for (const [label, value, sub] of tiles) {
@@ -135,51 +159,41 @@ class HuisEmsCard extends HTMLElement {
     }
     card.append(grid);
 
-    // Warmtebuffers.
-    const flex = this._state("verschuifbaar_verbruik");
-    const buffers = flex ? flex.attributes.buffers || [] : [];
-    if (buffers.length) {
-      const row = el("div", { class: "buffers" });
-      for (const b of buffers) {
-        row.append(el("div", { class: "buffer" },
-          el("div", { class: "bname" }, el("span", { text: b.naam }),
-            el("span", { class: b.aan ? "chip on" : "chip", text: b.aan ? "neemt zon op" : "normaal" })),
-          el("div", { class: "sub", text: [b.stand, b.temperatuur != null ? `${nl(b.temperatuur, 1)} °C` : null,
-            b.verbruikt_w != null ? `${nl(b.verbruikt_w)} W` : null].filter(Boolean).join(" · ") }),
-          el("div", { class: "note", text: b.toelichting || "" })));
-      }
-      const head2 = el("div", { class: "sub" , text: `Over na de accu: ${nl(flex.attributes.overschot_w)} W`
-        + (flex.attributes.schakelt ? "" : " · alleen advies (schakelen staat uit)") });
-      card.append(head2, row);
-    }
-
-    // De tijdlijn alleen opnieuw tekenen bij een nieuw plan, en niet terwijl iemand hem aanwijst.
+    // De tijdlijn alleen opnieuw tekenen bij nieuwe gegevens, en niet terwijl iemand hem aanwijst.
     if (!this._chartDirty || this._hovering) return;
     this._chartDirty = false;
-    const points = this._points();
-    this._timeline.replaceChildren(points.length < 2
+    const data = this._points();
+    this._timeline.replaceChildren(data.points.length < 2
       ? el("div", { class: "empty", text: "Nog geen vooruitblik om te tonen." })
-      : this._chart(points, tone));
+      : this._chart(data, now, tone));
   }
 
-  _chart(points, tone) {
+  _chart({ points, names }, current, tone) {
     const wrap = el("div", { class: "chart" });
     const width = Math.max(320, (this.clientWidth || 600) - 32);
     const left = 46, right = 12, inner = width - left - right;
+    const hasSoc = points.some((p) => p.soc != null || p.socP != null);
     const panels = [
-      { key: "soc", title: "Lading accu (%)", h: 80 },
-      { key: "koop", title: "Inkoopprijs (€/kWh)", h: 64 },
-      { key: "power", title: "Vermogen (W)", h: 130 },
+      { key: "main", title: "Verbruik en opwek (W)", h: 150 },
+      { key: "parts", title: "Verbruik per onderdeel (W)", h: 120 },
     ];
+    if (hasSoc) panels.push({ key: "soc", title: "Lading accu (%)", h: 70 });
     let y = 0;
-    for (const p of panels) { p.y = y + 18; y = p.y + p.h + 10; }
-    const height = y + 18;
+    for (const p of panels) { p.y = y + 18; y = p.y + p.h + 12; }
+    const height = y + 16;
     const t0 = points[0].t, t1 = points[points.length - 1].t + QUARTER, now = Date.now();
     const x = (t) => left + ((t - t0) / (t1 - t0)) * inner;
     const svg = el("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img",
-      "aria-label": "Tijdlijn: verwacht en werkelijk verbruik, zon, net en lading van de accu" });
+      "aria-label": "Tijdlijn: gemeten en voorspeld verbruik en opwek, verbruik per onderdeel en lading van de accu" });
     const ink = "var(--secondary-text-color)", grid = "var(--divider-color)";
+    const surface = "var(--card-background-color)";
+    const bottom = panels[panels.length - 1].y + panels[panels.length - 1].h;
 
+    // Toekomst: lichte achtergrond, zodat 'gemeten' en 'voorspeld' in één oogopslag te scheiden zijn.
+    if (now > t0 && now < t1) {
+      svg.append(el("rect", { x: x(now), y: panels[0].y - 4, width: x(t1) - x(now), height: bottom - panels[0].y + 8,
+        fill: "var(--secondary-text-color)", opacity: 0.04 }));
+    }
     const scale = (panel, lo, hi) => (v) => panel.y + panel.h - ((v - lo) / (hi - lo || 1)) * panel.h;
     const axis = (panel, lo, hi, ticks, fmt) => {
       const sy = scale(panel, lo, hi);
@@ -190,48 +204,77 @@ class HuisEmsCard extends HTMLElement {
       return sy;
     };
     const line = (sy, key, color, opts = {}) => {
-      let d = "", pen = false, last = null;
+      let d = "", pen = false;
       for (const p of points) {
         if ((opts.only != null && p.future !== opts.only) || p[key] == null) { pen = false; continue; }
-        const px = x(p.t), py = sy(p[key]);
-        if (opts.step && pen) d += `L${px.toFixed(1)},${last.toFixed(1)}`;
+        const px = x(p.t + QUARTER / 2), py = sy(p[key]);
         d += `${pen ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`;
-        if (opts.step) d += `L${x(p.t + QUARTER).toFixed(1)},${py.toFixed(1)}`;
-        pen = true; last = py;
+        pen = true;
       }
       if (d) svg.append(el("path", { d, fill: "none", stroke: color, "stroke-width": opts.width || 2,
         "stroke-linejoin": "round", "stroke-linecap": "round", "stroke-dasharray": opts.dash ? "5 4" : null,
         opacity: opts.opacity || 1 }));
     };
     const nice = (max) => { const m = Math.pow(10, Math.floor(Math.log10(max || 1))); return Math.ceil(max / m) * m; };
-
     for (const p of panels) svg.append(el("text", { x: left, y: p.y - 6, class: "ptitle", text: p.title }));
 
-    // Verschoven verbruik: lichte band achter alle panelen in de kwartieren waarin een buffer zon opnam.
-    for (const p of points) {
-      if (!p.moved) continue;
-      svg.append(el("rect", { x: x(p.t), y: panels[0].y, width: Math.max(1, x(p.t + QUARTER) - x(p.t)),
-        height: panels[2].y + panels[2].h - panels[0].y, fill: tone(SERIES[1]), opacity: 0.12 }));
+    // 1. Verbruik en opwek: gemeten doorgetrokken, voorspeld gestreept (verleden en toekomst).
+    const main = panels[0];
+    const values = points.flatMap((p) => [p.verbruik, p.zon, p.verbruikP, p.zonP])
+      .concat([current.verbruik_w, current.zon_w]).filter((v) => v != null);
+    const wmax = nice(Math.max(...values, 500));
+    const syMain = axis(main, 0, wmax, [0, wmax / 2, wmax], (v) => nl(v));
+    for (const s of MAIN) {
+      line(syMain, `${s.key}P`, tone(s), { dash: true, width: 1.5, opacity: 0.85 });
+      line(syMain, s.key, tone(s), { only: false });
+    }
+    // Nu: het lopende kwartier tot nu toe, als punt met waarde.
+    const dots = [];
+    for (const s of MAIN) {
+      const v = current[`${s.key}_w`];
+      if (v == null || !(now > t0 && now < t1)) continue;
+      const cy = syMain(v);
+      svg.append(el("circle", { cx: x(now), cy, r: 5, fill: tone(s), stroke: surface, "stroke-width": 2 }));
+      dots.push({ cy, text: `${nl(v)} W` });
+    }
+    dots.sort((p, q) => p.cy - q.cy);
+    let lastY = -Infinity;
+    for (const d of dots) {
+      const ty = Math.max(d.cy + 4, lastY + 12);
+      svg.append(el("text", { x: x(now) + 9, y: ty, class: "dot", text: d.text }));
+      lastY = ty;
     }
 
-    // 1. Lading: geweest gemeten, daarna de verwachting.
-    const sySoc = axis(panels[0], 0, 100, [0, 50, 100], (v) => `${v}`);
-    line(sySoc, "soc", "var(--primary-text-color)", { only: false });
-    line(sySoc, "soc", "var(--primary-text-color)", { only: true, dash: true });
+    // 2. Onderdelen: gestapeld; gemeten vol, voorspeld lichter.
+    const partsPanel = panels[1];
+    const stackOf = (p) => (p.future || !p.parts ? p.partsP : p.parts) || {};
+    const totals = points.map((p) => names.reduce((sum, n) => sum + Math.max(0, stackOf(p)[n] || 0), 0));
+    const pmax = nice(Math.max(...totals, 500));
+    const syParts = axis(partsPanel, 0, pmax, [0, pmax / 2, pmax], (v) => nl(v));
+    const base = points.map(() => 0);
+    for (const name of names) {
+      const color = this._partColor(names, name, tone);
+      for (const future of [false, true]) {
+        let d = "";
+        points.forEach((p, i) => {
+          if (p.future !== future) return;
+          const v = Math.max(0, stackOf(p)[name] || 0);
+          if (v <= 0) return;
+          const x0 = x(p.t), x1 = x(p.t + QUARTER);
+          const y0 = syParts(base[i]), y1 = syParts(base[i] + v);
+          d += `M${x0.toFixed(1)},${y0.toFixed(1)}L${x0.toFixed(1)},${y1.toFixed(1)}L${x1.toFixed(1)},${y1.toFixed(1)}L${x1.toFixed(1)},${y0.toFixed(1)}Z`;
+        });
+        if (d) svg.append(el("path", { d, fill: color, opacity: future ? 0.45 : 0.9 }));
+      }
+      points.forEach((p, i) => { base[i] += Math.max(0, stackOf(p)[name] || 0); });
+    }
 
-    // 2. Prijs.
-    const prices = points.map((p) => p.koop).filter((v) => v != null);
-    const pmax = Math.ceil(Math.max(...prices, 0.1) * 20) / 20, pmin = Math.min(0, Math.floor(Math.min(...prices) * 20) / 20);
-    const syPrice = axis(panels[1], pmin, pmax, [pmin, (pmin + pmax) / 2, pmax], (v) => nl(v, 2));
-    line(syPrice, "koop", "var(--primary-text-color)", { step: true, width: 1.5 });
-
-    // 3. Vermogen: werkelijk doorgetrokken, verwacht gestreept (ook in het verleden, ter vergelijking).
-    const powers = points.flatMap((p) => [p.verbruik, p.zon, p.net, p.verbruikV, p.zonV, p.netV]).filter((v) => v != null);
-    const wmax = nice(Math.max(...powers, 500)), wmin = Math.min(0, -nice(Math.max(0, -Math.min(...powers, 0))));
-    const syPower = axis(panels[2], wmin, wmax, [...new Set([wmin, 0, wmax / 2, wmax])], (v) => nl(v));
-    for (const s of SERIES) {
-      line(syPower, `${s.key}V`, tone(s), { dash: true, width: 1.5, opacity: 0.9 });
-      line(syPower, s.key, tone(s), { only: false });
+    // 3. Lading van de accu.
+    let sySoc = null;
+    if (hasSoc) {
+      sySoc = axis(panels[2], 0, 100, [0, 50, 100], (v) => `${v}`);
+      line(sySoc, "socP", "var(--primary-text-color)", { dash: true, width: 1.5, opacity: 0.8 });
+      line(sySoc, "soc", "var(--primary-text-color)", { only: false });
     }
 
     // Tijdas en het moment "nu".
@@ -242,43 +285,49 @@ class HuisEmsCard extends HTMLElement {
       if (t < t0 || d.getHours() % stepH) continue;
       const label = d.getHours() === 0 ? d.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric" })
         : `${String(d.getHours()).padStart(2, "0")}:00`;
-      svg.append(el("text", { x: x(t), y: height - 4, "text-anchor": "middle", class: d.getHours() === 0 ? "tick day" : "tick", text: label }));
+      svg.append(el("text", { x: x(t), y: height - 2, "text-anchor": "middle", class: d.getHours() === 0 ? "tick day" : "tick", text: label }));
     }
     if (now > t0 && now < t1) {
-      svg.append(el("line", { x1: x(now), x2: x(now), y1: panels[0].y - 2, y2: height - 18, stroke: ink, "stroke-width": 1 }));
+      svg.append(el("line", { x1: x(now), x2: x(now), y1: panels[0].y - 4, y2: bottom + 4, stroke: ink, "stroke-width": 1 }));
       svg.append(el("text", { x: x(now) + 4, y: panels[0].y - 6, class: "tick now", text: "nu" }));
     }
 
     // Aanwijzen: één uitlezing met alle reeksen op dat moment.
-    const cross = el("line", { y1: panels[0].y - 2, y2: height - 18, stroke: "var(--primary-text-color)", "stroke-width": 1, visibility: "hidden" });
+    const cross = el("line", { y1: panels[0].y - 4, y2: bottom + 4, stroke: "var(--primary-text-color)", "stroke-width": 1, visibility: "hidden" });
     const hit = el("rect", { x: left, y: 0, width: inner, height, fill: "transparent", tabindex: 0 });
     svg.append(cross, hit);
     const tip = el("div", { class: "tip", hidden: "" });
     const show = (index) => {
       const p = points[Math.max(0, Math.min(points.length - 1, index))];
-      cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
+      const px = x(p.t + QUARTER / 2);
+      cross.setAttribute("x1", px); cross.setAttribute("x2", px); cross.setAttribute("visibility", "visible");
       const when = new Date(p.t).toLocaleString("nl-NL", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-      const both = (actual, expected) => (p.future ? `${nl(expected)} W`
-        : `${nl(actual)} W (verwacht ${nl(expected)})`);
-      const rows = [
-        ["var(--primary-text-color)", "Lading", p.soc == null ? "–" : `${nl(p.soc)} %`],
-        ["var(--primary-text-color)", "Inkoopprijs", `€ ${nl(p.koop, 3)}${p.geschat ? " (geschat)" : ""}`],
-        [tone(SERIES[0]), "Verbruik", both(p.verbruik, p.verbruikV)],
-        [tone(SERIES[1]), "Zon", both(p.zon, p.zonV)],
-        [tone(SERIES[2]), "Net", both(p.net, p.netV)],
-      ];
-      if (p.wp) rows.push([tone(SERIES[0]), "Waarvan warmtepomp", `${nl(p.wp)} W`]);
-      if (p.accu != null) rows.push(["var(--primary-text-color)", "Accu (+ laden)", `${nl(p.accu)} W`]);
-      tip.replaceChildren(el("div", { class: "twhen", text: `${when} · ${p.future ? "verwacht" : "geweest"}` }));
+      const rows = [];
+      const row = (color, label, value) => rows.push([color, label, value]);
+      for (const s of MAIN) {
+        if (p.future) row(tone(s), `${s.label} verwacht`, `${nl(p[`${s.key}P`])} W`);
+        else {
+          row(tone(s), s.label, `${nl(p[s.key])} W`);
+          row(tone(s), p.dayAhead ? "  voorspeld etmaal vooraf" : "  voorspeld", `${nl(p[`${s.key}P`])} W`);
+          if (p.dayAhead) row(tone(s), "  voorspeld vlak vooraf", `${nl(p[`${s.key}N`])} W`);
+        }
+      }
+      const stack = stackOf(p);
+      for (const n of names) {
+        if (stack[n] == null) continue;
+        const pred = !p.future && p.partsP && p.partsP[n] != null ? ` (voorspeld ${nl(p.partsP[n])})` : "";
+        row(this._partColor(names, n, tone), n, `${nl(stack[n])} W${pred}`);
+      }
+      if (hasSoc) row("var(--primary-text-color)", "Lading accu", p.future ? `${nl(p.socP)} % verwacht` : `${nl(p.soc)} %`);
+      if (p.future && p.netP != null) row("var(--primary-text-color)", "Net (+ afname)", `${nl(p.netP)} W`);
+      tip.replaceChildren(el("div", { class: "twhen", text: `${when} · ${p.future ? "voorspeld" : "gemeten"}` }));
       for (const [color, label, value] of rows) {
         tip.append(el("div", { class: "trow" }, el("span", { class: "key", style: `background:${color}` }),
           el("span", { class: "tlabel", text: label }), el("span", { class: "tvalue", text: value })));
       }
-      if (p.moved) tip.append(el("div", { class: "twhy", text: `Zon opgenomen: ${p.moved}.` }));
       tip.hidden = false;
       this._hovering = true;
-      const px = x(p.t);
-      tip.style.left = `${Math.min(Math.max(8, px + 12), width - 268)}px`;
+      tip.style.left = `${Math.min(Math.max(8, px + 12), width - 288)}px`;
       this._index = points.indexOf(p);
     };
     const hide = () => {
@@ -305,10 +354,10 @@ class HuisEmsCard extends HTMLElement {
 
     // Legenda: identiteit nooit alleen met kleur, dus naam erbij.
     const legend = el("div", { class: "legend" });
-    for (const s of SERIES) legend.append(el("span", { class: "litem" }, el("span", { class: "stroke", style: `background:${tone(s)}` }), el("span", { text: s.label })));
-    legend.append(el("span", { class: "litem" }, el("span", { class: "stroke", style: "background:var(--primary-text-color)" }), el("span", { text: "Lading en prijs" })));
-    legend.append(el("span", { class: "litem" }, el("span", { class: "box", style: `background:${tone(SERIES[1])};opacity:.3` }), el("span", { text: "Zon opgenomen door een buffer" })));
-    legend.append(el("span", { class: "litem sub", text: "doorgetrokken = werkelijk · gestreept = verwacht" }));
+    for (const s of MAIN) legend.append(el("span", { class: "litem" }, el("span", { class: "stroke", style: `background:${tone(s)}` }), el("span", { text: s.label })));
+    for (const n of names) legend.append(el("span", { class: "litem" }, el("span", { class: "box", style: `background:${this._partColor(names, n, tone)}` }), el("span", { text: n })));
+    if (hasSoc) legend.append(el("span", { class: "litem" }, el("span", { class: "stroke", style: "background:var(--primary-text-color)" }), el("span", { text: "Lading accu" })));
+    legend.append(el("span", { class: "litem sub", text: "doorgetrokken = gemeten · gestreept = voorspeld (een etmaal vooraf waar bekend) · punt = nu · lichter = vooruit" }));
     wrap.append(svg, tip, legend);
     return wrap;
   }
@@ -323,29 +372,24 @@ const STYLE = `
   .why { margin: 6px 0 0; line-height: 1.45; max-width: 75ch; }
   .why.status { color: var(--secondary-text-color); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .tile, .buffer { border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; }
+  .tile { border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; }
   .label { color: var(--secondary-text-color); font-size: 0.75rem; }
   .value { font-size: 1.15rem; font-weight: 500; font-variant-numeric: tabular-nums; margin: 2px 0; }
-  .buffers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 6px 0 16px; }
-  .bname { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-  .chip { font-size: 0.75rem; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); }
-  .chip.on { color: var(--primary-text-color); border-color: var(--primary-text-color); }
-  .note { font-size: 0.8rem; margin-top: 4px; line-height: 1.35; }
   .chart { position: relative; }
   svg { display: block; overflow: visible; }
   .tick { font-size: 10px; fill: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
   .tick.day, .tick.now { fill: var(--primary-text-color); font-weight: 500; }
+  .dot { font-size: 11px; fill: var(--primary-text-color); font-weight: 600; font-variant-numeric: tabular-nums; }
   .ptitle { font-size: 11px; fill: var(--secondary-text-color); }
   rect[tabindex]:focus { outline: none; }
-  .tip { position: absolute; top: 8px; width: 250px; padding: 10px 12px; border-radius: 10px; pointer-events: none;
+  .tip { position: absolute; top: 8px; width: 270px; padding: 10px 12px; border-radius: 10px; pointer-events: none;
     background: var(--card-background-color); border: 1px solid var(--divider-color);
     box-shadow: 0 4px 16px rgba(0,0,0,.18); font-size: 0.8rem; z-index: 2; }
   .twhen { color: var(--secondary-text-color); margin-bottom: 6px; }
   .trow { display: flex; align-items: center; gap: 8px; line-height: 1.5; }
   .key { width: 12px; height: 2px; border-radius: 1px; flex: none; }
-  .tlabel { color: var(--secondary-text-color); flex: 1; }
+  .tlabel { color: var(--secondary-text-color); flex: 1; white-space: pre; }
   .tvalue { font-weight: 600; font-variant-numeric: tabular-nums; }
-  .twhy { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--divider-color); line-height: 1.4; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.8rem; }
   .litem { display: inline-flex; align-items: center; gap: 6px; }
   .box { width: 10px; height: 10px; border-radius: 2px; }
@@ -355,4 +399,4 @@ const STYLE = `
 
 customElements.define("huis-ems-card", HuisEmsCard);
 window.customCards = window.customCards || [];
-window.customCards.push({ type: "huis-ems-card", name: "Huis EMS", description: "Vooruitblik, verschuifbaar verbruik en tijdlijn" });
+window.customCards.push({ type: "huis-ems-card", name: "Huis EMS", description: "Vooruitblik en tijdlijn: gemeten, voorspeld, nu en vooruit" });

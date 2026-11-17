@@ -1,10 +1,9 @@
 # Accu's koppelen
 
 Het EMS stuurt accu's niet aan. Stel de accu in zijn eigen app in op zelfverbruik (nul op de
-meter). Het EMS leest alleen de lading en het vermogen uit, voor drie dingen:
+meter). Het EMS leest alleen de lading en het vermogen uit, voor twee dingen:
 
 - de vooruitblik: vanaf de lading van nu doorrekenen wanneer de accu vol en leeg raakt;
-- de warmtebuffers: pas aan als de accu vol genoeg is, en uit als de accu ze zou gaan voeden;
 - het verbruiksmodel: wat de accu laadt en ontlaadt hoort niet bij het huisverbruik.
 
 Bij Configureren > Accu toevoegen kies je de soort accu.
@@ -41,4 +40,4 @@ Voor elke accu met een eigen Home Assistant-integratie, zoals die van Anker. Je 
 - het actuele vermogen (aanbevolen; + is laden, of zet "omgekeerd" aan).
 
 Een laadtoestand die langer dan een kwartier niet is gemeld telt niet. Dan rekent de vooruitblik
-zonder accu en gaan de buffers niet aan, omdat niet te zeggen is of de accu vol genoeg is.
+zonder accu en meldt hij dat.

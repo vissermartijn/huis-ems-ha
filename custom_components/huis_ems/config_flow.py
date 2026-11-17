@@ -45,23 +45,9 @@ GRID = vol.Schema({
     vol.Optional(CONF_P1_HOST): sel.TextSelector(),
 })
 
-TARIFFS = vol.Schema({
-    vol.Required(CONF_TARIFF_MODE, default=TARIFF_FIXED): sel.SelectSelector(sel.SelectSelectorConfig(
-        options=[TARIFF_FIXED, TARIFF_SPOT, TARIFF_ALL_IN], translation_key="tariff_mode",
-        mode=sel.SelectSelectorMode.LIST)),
-    vol.Optional(CONF_NET_METERING, default=False): sel.BooleanSelector(),
-    vol.Optional(CONF_FIXED_BUY, default=0.27): _number(0, 2, 0.001, "EUR/kWh"),
-    vol.Optional(CONF_FIXED_SELL, default=0.05): _number(-1, 2, 0.001, "EUR/kWh"),
-    vol.Optional(CONF_PRICE_SENSOR): _entity("sensor"),
-    vol.Optional(CONF_PRICE_SCALE, default=1.0): _number(0.0001, 1000, "any"),
-    vol.Optional(CONF_ENERGY_TAX, default=0.0916): _number(0, 1, "any", "EUR/kWh"),
-    vol.Optional(CONF_BUY_FEE, default=0.02): _number(0, 1, "any", "EUR/kWh"),
-    vol.Optional(CONF_SELL_FEE, default=0.0): _number(0, 1, "any", "EUR/kWh"),
-    vol.Optional(CONF_VAT, default=21): _number(0, 30, 1, "%"),
-})
-
 HEATPUMP = vol.Schema({
     vol.Optional(CONF_HP_ENERGY): _entity("sensor", "energy", True),
+    vol.Optional(CONF_DHW_ACTIVE): _entity("binary_sensor"),
     vol.Optional(CONF_OUTDOOR_TEMP): _entity("sensor"),
     vol.Optional(CONF_WEATHER): _entity("weather"),
 })
@@ -102,53 +88,18 @@ def _consumer_schema(editing):
     return vol.Schema(fields)
 
 
-def _common(fields, d):
-    """Velden die elke buffer heeft; de standaardwaarden verschillen per soort."""
-    fields.update({
-        vol.Required(L_MIN_SOC, default=d["soc"]): _number(0, 100, 1, "%"),
-        vol.Required(L_START, default=d["start"]): _number(0, 24, 0.25, "h"),
-        vol.Required(L_END, default=d["end"]): _number(0, 24, 0.25, "h"),
-        vol.Required(L_FORECAST, default=d["forecast"]): sel.BooleanSelector(),
-        vol.Required(L_ORDER, default=d["order"]): _number(1, 20, 1),
-        vol.Required(L_ON_DELAY, default=d["on"]): _number(0, 120, 1, "min"),
-        vol.Required(L_OFF_DELAY, default=d["off"]): _number(0, 120, 1, "min"),
-        vol.Required(L_MIN_ON, default=d["min_on"]): _number(0, 480, 1, "min"),
-        vol.Required(L_MIN_OFF, default=d["min_off"]): _number(0, 480, 1, "min"),
-        vol.Required(L_REST, default=d["rest"]): _number(0, 240, 1, "min"),
-    })
-    return fields
-
-
-def _thermostat_schema(editing):
+def _appliance_schema(editing):
     fields = {
-        vol.Required(L_NAME, default="Vloerverwarming"): sel.TextSelector(),
-        vol.Optional(L_ENTITY): _entity("climate"),
-        vol.Required(L_BOOST, default=1.0): _number(0.5, 5, 0.5, "°C"),
-        vol.Optional(L_TEMP): _entity("sensor"),
-        vol.Required(L_MAX_TEMP, default=22.0): _number(15, 28, 0.5, "°C"),
-        vol.Required(L_POWER, default=1500): _number(100, 15000, 50, "W"),
-        vol.Optional(L_POWER_SENSOR): _entity("sensor", "power"),
+        vol.Required(A_NAME): sel.TextSelector(),
+        vol.Required(A_KIND, default="wasmachine"): sel.SelectSelector(sel.SelectSelectorConfig(
+            options=KINDS, translation_key="soort", mode=sel.SelectSelectorMode.LIST)),
+        vol.Required(A_STATE): sel.EntitySelector(sel.EntitySelectorConfig(
+            domain=["sensor", "binary_sensor"])),
+        vol.Optional(A_FINISH): _entity("sensor", "timestamp"),
+        vol.Optional(A_ENERGY): _entity("sensor", "energy"),
+        vol.Optional(A_KWH): _number(0.05, 10, 0.05, "kWh"),
+        vol.Optional(A_MINUTES): _number(5, 600, 5, "min"),
     }
-    _common(fields, {"soc": 90, "start": 10, "end": 16, "forecast": True, "order": 1, "on": 10,
-                     "off": 10, "min_on": 60, "min_off": 30, "rest": 30})
-    if editing:
-        fields[vol.Optional("delete", default=False)] = sel.BooleanSelector()
-    return vol.Schema(fields)
-
-
-def _switch_schema(editing):
-    fields = {
-        vol.Required(L_NAME, default="Boiler"): sel.TextSelector(),
-        vol.Optional(L_ENTITY): sel.EntitySelector(sel.EntitySelectorConfig(
-            domain=["switch", "input_boolean", "light"])),
-        vol.Required(L_POWER, default=2000): _number(50, 25000, 50, "W"),
-        vol.Optional(L_POWER_SENSOR): _entity("sensor", "power"),
-        vol.Optional(L_ENERGY): _entity("sensor", "energy"),
-        vol.Optional(L_TEMP): _entity("sensor"),
-        vol.Optional(L_MAX_TEMP, default=60.0): _number(20, 95, 0.5, "°C"),
-    }
-    _common(fields, {"soc": 95, "start": 0, "end": 24, "forecast": False, "order": 2, "on": 5,
-                     "off": 3, "min_on": 15, "min_off": 10, "rest": 15})
     if editing:
         fields[vol.Optional("delete", default=False)] = sel.BooleanSelector()
     return vol.Schema(fields)
@@ -221,15 +172,15 @@ class HuisEmsOptions(OptionsFlow):
         return dict(self.config_entry.options)
 
     async def async_step_init(self, user_input=None):
-        menu = ["bronnen", "net", "tarieven", "warmtepomp", "accu_toevoegen"]
+        menu = ["bronnen", "net", "warmtepomp", "accu_toevoegen"]
         if self._options.get(CONF_BATTERIES):
             menu.append("accu_kiezen")
         menu.append("verbruiker_toevoegen")
         if self._options.get(CONF_CONSUMERS):
             menu.append("verbruiker_kiezen")
-        menu += ["thermostaat_toevoegen", "schakelaar_toevoegen"]
-        if self._options.get(CONF_STAGE2):
-            menu.append("buffer_kiezen")
+        menu.append("apparaat_toevoegen")
+        if self._options.get(CONF_APPLIANCES):
+            menu.append("apparaat_kiezen")
         return self.async_show_menu(step_id="init", menu_options=menu)
 
     async def _simple(self, step, schema, user_input):
@@ -244,14 +195,11 @@ class HuisEmsOptions(OptionsFlow):
     async def async_step_net(self, user_input=None):
         return await self._simple("net", GRID, user_input)
 
-    async def async_step_tarieven(self, user_input=None):
-        return await self._simple("tarieven", TARIFFS, user_input)
-
     async def async_step_warmtepomp(self, user_input=None):
         return await self._simple("warmtepomp", HEATPUMP, user_input)
 
-    # Verbruikers met een eigen model en verbruikers van de tweede trap: lijsten
-    # die op dezelfde manier worden bewerkt.
+    # Verbruikers met een eigen model en apparaten: lijsten die op dezelfde manier
+    # worden bewerkt.
 
     async def _pick(self, step, key, next_step, user_input):
         items = self._options.get(key, [])
@@ -290,31 +238,15 @@ class HuisEmsOptions(OptionsFlow):
     async def async_step_verbruiker(self, user_input=None):
         return await self._item("verbruiker", CONF_CONSUMERS, _consumer_schema, user_input)
 
-    # Verschuifbaar verbruik: twee soorten warmtebuffers met elk hun eigen velden.
-
-    async def async_step_thermostaat_toevoegen(self, user_input=None):
+    async def async_step_apparaat_toevoegen(self, user_input=None):
         self._edit_id = None
-        return await self.async_step_thermostaat(user_input)
+        return await self.async_step_apparaat(user_input)
 
-    async def async_step_schakelaar_toevoegen(self, user_input=None):
-        self._edit_id = None
-        return await self.async_step_schakelaar(user_input)
+    async def async_step_apparaat_kiezen(self, user_input=None):
+        return await self._pick("apparaat_kiezen", CONF_APPLIANCES, self.async_step_apparaat, user_input)
 
-    async def async_step_buffer_kiezen(self, user_input=None):
-        async def route():
-            item = next(i for i in self._options.get(CONF_STAGE2, []) if i["id"] == self._edit_id)
-            if item.get(L_KIND, "schakelaar") == "thermostaat":
-                return await self.async_step_thermostaat()
-            return await self.async_step_schakelaar()
-        return await self._pick("buffer_kiezen", CONF_STAGE2, route, user_input)
-
-    async def async_step_thermostaat(self, user_input=None):
-        return await self._item("thermostaat", CONF_STAGE2, _thermostat_schema, user_input,
-                                {L_KIND: "thermostaat"})
-
-    async def async_step_schakelaar(self, user_input=None):
-        return await self._item("schakelaar", CONF_STAGE2, _switch_schema, user_input,
-                                {L_KIND: "schakelaar"})
+    async def async_step_apparaat(self, user_input=None):
+        return await self._item("apparaat", CONF_APPLIANCES, _appliance_schema, user_input)
 
     async def async_step_accu_toevoegen(self, user_input=None):
         self._edit_id = None

@@ -112,8 +112,10 @@ def fit(samples, limits=range(8, 22)):
     if use is with_temp and not any(k > 0 for _, k in params.values()):
         use = samples  # geen temperatuureffect: dan tellen ook de uren zonder temperatuur mee
         params, _ = _fit_groups([(s[0], s[1], None) + tuple(s[3:]) for s in use], t_limit, _by_hour)
-    model = LoadModel([params.get(h, (0.0, 0.0))[0] for h in range(24)],
-                      [params.get(h, (0.0, 0.0))[1] for h in range(24)], t_limit, len(use))
+    # Uren zonder gegevens (bijvoorbeeld overdag zonder zonmeting) krijgen het gemiddelde.
+    mean = (sum(v[0] for v in params.values()) / len(params), sum(v[1] for v in params.values()) / len(params))
+    model = LoadModel([params.get(h, mean)[0] for h in range(24)],
+                      [params.get(h, mean)[1] for h in range(24)], t_limit, len(use))
     if len(use) >= DAYTYPE_MIN and any(_weekend(s) for s in use):
         plain = _holdout_error(use, t_limit, _by_hour)
         split = _holdout_error(use, t_limit, _by_hour_and_daytype)

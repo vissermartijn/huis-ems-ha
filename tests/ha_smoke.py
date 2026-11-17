@@ -1,9 +1,10 @@
 """Rooktest tegen een wegwerp-Home Assistant in Docker (zie README).
 
 Doorloopt de eerste inrichting, stelt Huis EMS in via dezelfde stappen als de
-gebruikersinterface en controleert de vooruitblik, de virtuele accu en de twee
-warmtebuffers: een boilerelement (schakelaar) en een thermostaat. Een
-nagebootste Zendure-accu mag alleen worden uitgelezen, nooit aangestuurd.
+gebruikersinterface en controleert de vooruitblik per onderdeel, de virtuele accu,
+tapwater van de warmtepomp en een vaatwasser met uitgestelde start (zoals Home
+Connect hem meldt). Een nagebootste Zendure-accu mag alleen worden uitgelezen,
+nooit aangestuurd.
 Gebruik: python tests/ha_smoke.py http://localhost:8124 [--serve]
 """
 import json
@@ -167,25 +168,38 @@ def serve(entry_id, meter, minutes=30):
         t = now - timedelta(minutes=15 * i)
         hour = (t.hour + 1 + t.minute / 60) % 24          # ongeveer lokale tijd
         sun = max(0.0, math.sin(math.pi * (hour - 8.5) / 8)) * 3200 if 8.5 < hour < 16.5 else 0.0
-        load = 450 + 900 * math.exp(-((hour - 18.5) / 2) ** 2) + 500 * math.exp(-((hour - 7.5) / 1.2) ** 2)
-        price = 0.196 + (0.12 if 17 <= hour < 21 else 0.05 if 7 <= hour < 9 else -0.05 if 11 <= hour < 15 else 0)
+        heat = 600 + 300 * math.cos(math.pi * hour / 12)
+        tap = 1800 if 3 <= hour < 4 else 0.0
+        dish = 1400 if 19.5 <= hour < 20.25 else 150 if 20.25 <= hour < 22 else 0.0
+        rest = 250 + 600 * math.exp(-((hour - 18.5) / 2) ** 2) + 300 * math.exp(-((hour - 7.5) / 1.2) ** 2)
+        load = heat + tap + dish + rest
         net = load - sun
         accu = max(-3000, min(3000, -net))
         if (accu > 0 and soc >= 100) or (accu < 0 and soc <= 10):
             accu = 0
         soc = max(10, min(100, soc + accu / 1000 / 4 / 8 * 100))
-        moved = {"Boiler": 15} if soc >= 99 and net < -2000 else {}
-        actual_load = load + random.gauss(0, 150) + (2000 if moved else 0)
+        noise = random.gauss(0, 120)
+        actual = {"warmtepomp verwarmen": round(heat * random.uniform(0.85, 1.15)),
+                  "warmtepomp tapwater": round(tap), "Vaatwasser": round(dish),
+                  "overig": round(max(0, rest + noise))}
+        actual_load = sum(actual.values())
         actual_sun = sun * random.uniform(0.8, 1.05)
-        history.append({"t": t.isoformat(), "koop": round(price, 4), "verkoop": 0.05, "soc_pct": round(soc),
+        expected = {"warmtepomp verwarmen": round(heat), "warmtepomp tapwater": round(tap * 0.8),
+                    "Vaatwasser": round(dish * 0.7), "overig": round(rest)}
+        history.append({"t": t.isoformat(), "soc_pct": round(soc),
                         "verwacht_verbruik_w": round(load), "verwacht_zon_w": round(sun),
                         "verwacht_net_w": round(net + accu), "verwacht_accu_w": round(accu),
+                        "verwacht": expected, "basis": {"rest": round(rest + dish * 0.7)},
+                        "etmaal_verbruik_w": round(load * random.uniform(0.85, 1.15)),
+                        "etmaal_zon_w": round(sun * random.uniform(0.7, 1.2)),
+                        "etmaal_soc_pct": round(min(100, soc * random.uniform(0.9, 1.1))),
+                        "etmaal": expected,
                         "werkelijk_verbruik_w": round(actual_load), "werkelijk_zon_w": round(actual_sun),
+                        "werkelijk_rest_ruw_w": actual["overig"] + actual["Vaatwasser"],
+                        "werkelijk": actual,
                         "net_w": round(actual_load - actual_sun + accu),
-                        "net_zonder_accu_w": round(actual_load - actual_sun), "verschoven_min": moved})
+                        "net_zonder_accu_w": round(actual_load - actual_sun)})
     store["data"]["history"] = history
-    store["data"]["costs"] = {"zonder": 41.3, "met": 29.8, "dag": datetime.now().date().isoformat(),
-                              "dag_zonder": 3.42, "dag_met": 2.31}
     json.dump(store, open(path, "w", encoding="utf-8"))
     subprocess.run(["docker", "start", "ha-ems-test"], check=True, capture_output=True)
     wait_ready()
@@ -218,23 +232,22 @@ def expect(condition, scenario):
         FAILURES.append(scenario)
 
 
-def flex(name):
-    items = state("sensor.huis_ems_verschuifbaar_verbruik")["attributes"].get("buffers") or []
-    return next((i for i in items if i["naam"] == name), {})
-
-
 def show(title):
     print(f"\n--- {title} ---")
     look = state("sensor.huis_ems_vooruitblik")
-    flex_state = state("sensor.huis_ems_verschuifbaar_verbruik")
-    print("vooruitblik:", look["state"])
+    print("vooruitblik:", look["state"], "|", look["attributes"].get("status"))
     print("accu", state("sensor.huis_ems_accu_lading")["state"], "% |",
           state("sensor.huis_ems_accu_vermogen")["state"], "W | net met accu",
           state("sensor.huis_ems_net_met_accu")["state"], "W, zonder",
           state("sensor.huis_ems_net_zonder_accu")["state"], "W")
-    print("verschuiven:", flex_state["state"], "| over", flex_state["attributes"].get("overschot_w"), "W")
-    for item in flex_state["attributes"].get("buffers") or []:
-        print(f"  {item['naam']}: {item['stand']} | {item['beheer']} | {item['toelichting']}")
+    print("onderdelen 24u:", state("sensor.huis_ems_plan")["attributes"].get("onderdelen_24u_kwh"))
+
+
+def part_kwh(name, first=0, last=None):
+    """Verwacht verbruik van een onderdeel in kWh tussen twee kwartieren vanaf nu."""
+    plan = state("sensor.huis_ems_plan")["attributes"]
+    values = (plan.get("onderdelen_w") or {}).get(name) or []
+    return sum(values[first:last]) / 4 / 1000, values
 
 
 def main():
@@ -253,10 +266,6 @@ def main():
     assert result["type"] == "create_entry", result
     entry_id = result["result"]["entry_id"]
 
-    options(entry_id, "tarieven", {
-        "tariff_mode": "dynamisch_kaal", "salderen": False, "fixed_buy": 0.27, "fixed_sell": 0.05,
-        "price_sensor": "sensor.testprijzen", "price_scale": 1, "energy_tax": 0.0916,
-        "buy_fee": 0.02, "sell_fee": 0, "vat": 21})
     meter = FakeP1()
     options(entry_id, "net", {"p1_host": "host.docker.internal:8125"})
     options(entry_id, "accu_toevoegen", {
@@ -271,6 +280,9 @@ def main():
     expect(bool(look["attributes"].get("tekst")), "vooruitblik: er is een tekst")
     expect(len(plan.get("zon_w") or []) >= 96 and len(plan.get("soc_pct") or []) == len(plan["zon_w"]),
            "vooruitblik: plan met zon en lading voor minstens 24 uur")
+    expect(list(plan.get("onderdelen_w") or {}) == ["overig"], "vooruitblik: zonder meters alleen 'overig'")
+    expect(not any(s["entity_id"].startswith(("switch.huis_ems", "binary_sensor.huis_ems"))
+                   for s in call("/api/states")), "opruimen: geen schakelaars of signalen van het verschuiven")
 
     # De virtuele accu doet wat een accu op zelfverbruik doet: de meter volgen.
     meter.set(-2000)
@@ -281,111 +293,53 @@ def main():
            "virtuele accu: neemt het overschot op, net met accu rond nul")
     expect((num("sensor.huis_ems_accu_vermogen") or 0) > 1800, "virtuele accu: laadt ongeveer 2000 W")
 
-    # Boiler: element van 2000 W. Eerst moet de accu vol genoeg zijn.
-    boiler = {
-        "name": "Boiler", "entity": "input_boolean.boiler", "power_w": 2000,
-        "power_sensor": "sensor.boilervermogen", "temp_sensor": "sensor.boiler_temperatuur",
-        "max_temp": 60, "min_soc_pct": 95, "start_hour": 0, "end_hour": 24, "need_forecast": False,
-        "order": 2, "on_delay_min": 0, "off_delay_min": 0, "min_on_min": 1, "min_off_min": 0,
-        "rest_min": 0}
-    options(entry_id, "schakelaar_toevoegen", boiler)
-    meter.set(-6000)   # accu laadt 3000 W, 3000 W gaat naar het net
-    time.sleep(50)
-    show("6000 W overschot, accu net begonnen")
-    expect(state("input_boolean.boiler")["state"] == "off", "boiler: blijft uit zolang de accu niet vol genoeg is")
-    expect("95%" in (flex("Boiler").get("toelichting") or ""), "boiler: de reden noemt de minimale lading")
-
-    options(entry_id, "buffer_kiezen", {**boiler, "min_soc_pct": 0}, pick="Boiler")
-    meter.set(-6000)
-    time.sleep(55)
-    show("minimale lading 0%, alleen advies")
-    expect(state("binary_sensor.huis_ems_boiler_vrijgegeven")["state"] == "on",
-           "boiler: advies 'vrijgegeven' bij genoeg overschot")
-    expect(state("input_boolean.boiler")["state"] == "off", "boiler: bij alleen advies schakelt het EMS niet")
-
-    call("/api/services/switch/turn_on", {"entity_id": "switch.huis_ems_verbruik_verschuiven"})
-    time.sleep(55)
-    show("schakelen aan")
-    expect(state("input_boolean.boiler")["state"] == "on", "boiler: met schakelen aan gaat het element aan")
-    # Het element neemt nu zelf 2000 W; daarna een wolk: de accu zou moeten bijspringen.
-    call("/api/services/input_number/set_value", {"entity_id": "input_number.boiler_w", "value": 2000})
-    meter.set(-4000)
-    time.sleep(30)
-    expect(state("input_boolean.boiler")["state"] == "on", "boiler: blijft aan zolang de zon hem dekt")
-    meter.set(500)
-    time.sleep(100)
-    show("wolk: de accu zou de boiler voeden")
-    expect(state("input_boolean.boiler")["state"] == "off",
-           "boiler: gaat uit als de accu hem zou moeten voeden")
-    call("/api/services/input_number/set_value", {"entity_id": "input_number.boiler_w", "value": 0})
-
-    # Vat al warm: niet aanzetten.
-    call("/api/services/input_number/set_value", {"entity_id": "input_number.boiler_temp", "value": 61})
-    meter.set(-6000)
-    time.sleep(55)
-    show("vat 61 °C")
-    expect(state("input_boolean.boiler")["state"] == "off", "boiler: niet aan boven de maximale temperatuur")
-    expect("60" in (flex("Boiler").get("toelichting") or ""), "boiler: de reden noemt de temperatuurgrens")
-    call("/api/services/input_number/set_value", {"entity_id": "input_number.boiler_temp", "value": 48})
-
-    # Thermostaat: gaat voor de boiler en zet de woonkamer een graad hoger.
-    options(entry_id, "thermostaat_toevoegen", {
-        "name": "Vloer", "entity": "climate.woonkamer", "boost_c": 1, "temp_sensor": "sensor.kamertemperatuur",
-        "max_temp": 22, "power_w": 1000, "min_soc_pct": 0, "start_hour": 0, "end_hour": 24,
-        "need_forecast": False, "order": 1, "on_delay_min": 0, "off_delay_min": 0, "min_on_min": 1,
-        "min_off_min": 0, "rest_min": 0})
-    meter.set(-6000)
-    time.sleep(55)
-    show("thermostaat erbij, 3000 W over na de accu")
-    target = state("climate.woonkamer")["attributes"].get("temperature")
-    expect(target == 21, f"thermostaat: bij overschot een graad hoger (nu {target})")
-    expect("normaal 20" in (flex("Vloer").get("stand") or ""), "thermostaat: onthoudt de normale temperatuur")
-
-    # Ruimte te warm: meteen terug, en weer omhoog als hij is afgekoeld.
-    call("/api/services/input_number/set_value", {"entity_id": "input_number.kamer", "value": 22.2})
-    time.sleep(20)
-    target = state("climate.woonkamer")["attributes"].get("temperature")
-    expect(target == 20, f"thermostaat: terug naar normaal als de kamer te warm wordt (nu {target})")
-    call("/api/services/input_number/set_value", {"entity_id": "input_number.kamer", "value": 20.5})
-    time.sleep(40)
-    expect(state("climate.woonkamer")["attributes"].get("temperature") == 21, "thermostaat: weer verhoogd")
-
-    # Iemand zet de thermostaat zelf anders: het EMS laat hem zo en wacht een tijd.
-    call("/api/services/climate/set_temperature", {"entity_id": "climate.woonkamer", "temperature": 19})
-    time.sleep(30)
-    show("thermostaat met de hand op 19 °C")
-    target = state("climate.woonkamer")["attributes"].get("temperature")
-    expect(target == 19, f"thermostaat: een handmatige wijziging blijft staan (nu {target})")
-    expect("met de hand" in (flex("Vloer").get("toelichting") or ""), "thermostaat: de reden noemt de handmatige wijziging")
-    # Na herladen begint het EMS opnieuw, vanaf de stand van dat moment.
-    call("/api/services/climate/set_temperature", {"entity_id": "climate.woonkamer", "temperature": 20})
-    call(f"/api/config/config_entries/entry/{entry_id}/reload", {})
-    time.sleep(40)
-    target = state("climate.woonkamer")["attributes"].get("temperature")
-    expect(target == 21, f"thermostaat: na herladen weer verhoogd vanaf 20 °C (nu {target})")
-
-    # Schakelen uit: alles terug naar normaal.
-    call("/api/services/switch/turn_off", {"entity_id": "switch.huis_ems_verbruik_verschuiven"})
+    # Warmtepomp: verwarmen en tapwater apart.
+    options(entry_id, "warmtepomp", {
+        "hp_energy": ["sensor.warmtepomp_energie"], "dhw_active": "binary_sensor.tapwater_bezig",
+        "outdoor_temp": "sensor.buitentemperatuur"})
     time.sleep(10)
-    target = state("climate.woonkamer")["attributes"].get("temperature")
-    expect(target == 20, f"schakelen uit: thermostaat terug naar normaal (nu {target})")
-
-    # Herladen terwijl de thermostaat verhoogd is: eerst terugzetten.
-    call("/api/services/switch/turn_on", {"entity_id": "switch.huis_ems_verbruik_verschuiven"})
-    time.sleep(45)
-    expect(state("climate.woonkamer")["attributes"].get("temperature") == 21, "herladen: thermostaat verhoogd")
-    meter.set(2000)   # na het herladen geen overschot, zodat hij niet meteen weer omhoog gaat
-    call(f"/api/config/config_entries/entry/{entry_id}/reload", {})
+    names = list(state("sensor.huis_ems_plan")["attributes"].get("onderdelen_w") or {})
+    # Zonder historie is er nog geen stookmodel; tapwater staat er wel meteen in.
+    expect("warmtepomp tapwater" in names and names[-1] == "overig",
+           f"warmtepomp: tapwater als eigen onderdeel ({names})")
+    call("/api/services/input_boolean/turn_on", {"entity_id": "input_boolean.tapwater"})
     time.sleep(10)
-    target = state("climate.woonkamer")["attributes"].get("temperature")
-    expect(target == 20, f"herladen: het EMS zet de thermostaat eerst terug (nu {target})")
+    show("tapwater bezig")
+    now_kwh, _ = part_kwh("warmtepomp tapwater", 0, 8)
+    expect(now_kwh > 0.5, f"tapwater: een lopende cyclus komt de eerste twee uur in de voorspelling ({now_kwh:.2f} kWh)")
+    expect("tapwater" in (state("sensor.huis_ems_vooruitblik")["attributes"].get("status") or ""),
+           "tapwater: de status noemt de lopende cyclus")
+    call("/api/services/input_boolean/turn_off", {"entity_id": "input_boolean.tapwater"})
+
+    # Vaatwasser via Home Connect: uitgestelde start, klaar over vier uur.
+    options(entry_id, "apparaat_toevoegen", {
+        "name": "Vaatwasser", "soort": "vaatwasser", "state": "sensor.vaatwasser_bedrijfstoestand",
+        "finish_time": "sensor.vaatwasser_klaar", "kwh_per_cycle": 1.0, "minutes": 180})
+    call("/api/services/input_number/set_value", {"entity_id": "input_number.vaat_klaar_min", "value": 240})
+    call("/api/services/input_select/select_option",
+         {"entity_id": "input_select.vaatwasser", "option": "delayedstart"})
+    time.sleep(12)
+    show("vaatwasser uitgesteld, klaar over 4 uur")
+    early, _ = part_kwh("Vaatwasser", 1, 3)
+    planned, values = part_kwh("Vaatwasser", 0, 20)
+    expect(early < 0.02, f"vaatwasser: niet vóór de uitgestelde start ({early:.2f} kWh)")
+    expect(0.9 < planned < 1.1, f"vaatwasser: één programma ingepland tussen start en eindtijd ({planned:.2f} kWh)")
+    expect("uitgestelde start" in (state("sensor.huis_ems_vooruitblik")["attributes"].get("apparaten") or {})
+           .get("Vaatwasser", ""), "vaatwasser: de vooruitblik noemt de uitgestelde start")
+    call("/api/services/input_select/select_option", {"entity_id": "input_select.vaatwasser", "option": "run"})
+    time.sleep(12)
+    running, _ = part_kwh("Vaatwasser", 0, 4)
+    expect(running > 0.2, f"vaatwasser: loopt nu, verbruik meteen ingepland ({running:.2f} kWh in het eerste uur)")
+    model = state("sensor.huis_ems_verbruiksmodel")["attributes"]
+    expect("Vaatwasser" in (model.get("apparaten") or {}), "vaatwasser: gewoonte staat in het verbruiksmodel")
+    call("/api/services/input_select/select_option", {"entity_id": "input_select.vaatwasser", "option": "finished"})
 
     # Meter valt weg: geen overschot meer bekend.
     meter.stop()
     time.sleep(45)
     show("P1-meter onbereikbaar")
-    expect(state("binary_sensor.huis_ems_meterstoring")["state"] == "on",
-           "meteruitval: na 20 seconden zonder meting gaat de meterstoring aan")
+    expect("P1-meter" in (state("sensor.huis_ems_vooruitblik")["attributes"].get("status") or ""),
+           "meteruitval: na 20 seconden zonder meting meldt de status het")
     meter.start()
     meter.set(600)
     time.sleep(10)
@@ -427,7 +381,8 @@ def main():
             "use_energy_forecast": True, "pv_forecast_sensors": ["sensor.testzon"], "pv_forecast_unit": "kw",
             "horizon_hours": 36})
         options(entry_id, "warmtepomp", {
-            "hp_energy": ["sensor.warmtepomp_energie"], "outdoor_temp": "sensor.buitentemperatuur"})
+            "hp_energy": ["sensor.warmtepomp_energie"], "dhw_active": "binary_sensor.tapwater_bezig",
+            "outdoor_temp": "sensor.buitentemperatuur"})
         options(entry_id, "verbruiker_toevoegen", {
             "name": "Hottub", "energy": ["sensor.hottub_energie"],
             "setpoint": "input_number.hottub_doel", "current_temp": "sensor.hottub_temperatuur"})
@@ -474,6 +429,10 @@ def main():
     if rows:
         expect(any(r.get("werkelijk_zon_w") is not None for r in rows),
                "zonmeting: een oude teller zonder waarde blokkeert de meting per kwartier niet")
+        expect(all("verwacht" in r and "basis" in r for r in rows),
+               "terugblik: elk kwartier heeft de verwachting per onderdeel")
+    now_q = state("sensor.huis_ems_verbruik_dit_kwartier")
+    print("dit kwartier:", now_q["state"], now_q["attributes"])
     print("\nterugblik:", state("sensor.huis_ems_terugblik")["state"], "kwartieren | voorspelkwaliteit:",
           state("sensor.huis_ems_voorspelkwaliteit")["attributes"])
     if "--serve" in sys.argv:

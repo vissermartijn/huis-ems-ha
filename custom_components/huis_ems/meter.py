@@ -1,4 +1,4 @@
-"""De P1-meter als bron voor het actuele overschot.
+"""De P1-meter als bron voor het actuele netvermogen.
 
 Twee manieren om aan metingen te komen:
 
@@ -6,7 +6,7 @@ Twee manieren om aan metingen te komen:
   uitlezen, binnen het eigen netwerk.
 - via Home Assistant: de bestaande sensor volgen. Werkt met elke meter, maar
   is zo snel als die integratie ververst (HomeWizard: elke 5 seconden). Voor
-  het schakelen van warmtebuffers is dat ruim voldoende.
+  het voorspellen is dat ruim voldoende.
 
 Valt de rechtstreekse verbinding weg, dan schakelt de bron terug naar de
 sensor van Home Assistant.
