@@ -11,6 +11,8 @@ HA_VERSION="${HA_VERSION:-2026.11.1}"
 cp tests/ha_test_configuration.yaml "$WORK/configuration.yaml"
 cp homeassistant/dashboard.yaml "$WORK/ems_dashboard.yaml"
 cp homeassistant/grafieken.yaml "$WORK/ems_grafieken.yaml"
+# De losse kaart in een gewoon dashboard, zoals iemand hem in een bestaand dashboard plakt.
+{ printf 'views:\n  - title: Kaart\n    path: kaart\n    cards:\n'; sed 's/^/      /; s/^      type: vertical-stack/      - type: vertical-stack/; s/^      cards:/        cards:/' homeassistant/grafieken-kaart.yaml; } > "$WORK/ems_kaart.yaml"
 # Grafieken bekijken: APEX_JS=/pad/naar/apexcharts-card.js sh tests/ha_test.sh --serve
 mkdir -p "$WORK/www"
 if [ -n "$APEX_JS" ]; then cp "$APEX_JS" "$WORK/www/apexcharts-card.js"; else : > "$WORK/www/apexcharts-card.js"; fi

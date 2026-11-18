@@ -277,6 +277,22 @@ class LoadModelTest(unittest.TestCase):
         self.assertEqual(model.k, 0)
         self.assertAlmostEqual(model.predict(5, None), 0.4)
 
+    def test_counter_jump_and_thin_hours(self):
+        # Overdag ontbreekt de zonmeting, op één uur na met een paar metingen, waaronder
+        # een tellersprong. Dat mag de rest van de dag niet besmetten.
+        from core.loadmodel import fit
+        samples = []
+        for day in range(60):
+            for hod in range(24):
+                if 7 <= hod < 20 and not (hod == 16 and day >= 57):
+                    continue
+                y = 1422.0 if (hod == 16 and day == 58) else 0.4 + 0.05 * (hod == 16)
+                samples.append((hod, y, None))
+        model = fit(samples)
+        self.assertTrue(all(model.predict(h, None) < 1.0 for h in range(24)), model.base)
+        self.assertAlmostEqual(model.predict(12, None), 0.4, places=2)   # mediaan van de nachturen
+        self.assertAlmostEqual(model.predict(16, None), 0.4, places=2)   # te weinig metingen
+
     def test_slope_per_hour(self):
         # Een hottub die alleen overdag verwarmt: bij kou overdag meer, 's nachts niet.
         from core.loadmodel import fit

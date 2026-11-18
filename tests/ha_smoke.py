@@ -396,6 +396,9 @@ def main():
         print(model["state"], "|", model["attributes"]["toelichting"])
         print("onderdelen 24u:", state("sensor.huis_ems_plan")["attributes"]["onderdelen_24u_kwh"])
         expect(model["state"] == "geleerd", "leren: model geleerd uit de ingeladen historie")
+        parts = state("sensor.huis_ems_plan")["attributes"].get("onderdelen_w") or {}
+        peak = max((max(v) for v in parts.values() if v), default=0)
+        expect(peak < 17250, f"leren: geen onmogelijke voorspelling, hoogste kwartier {peak:.0f} W (3x25 A)")
 
     # De sjablonen van het dashboard moeten zonder fouten renderen.
     import pathlib

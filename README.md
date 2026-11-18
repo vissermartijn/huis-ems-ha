@@ -67,10 +67,16 @@ eigen integratie. Meerdere accu's tellen samen op. Het EMS schrijft nooit naar e
    bezig"), accu's, verbruikers met een eigen meter en apparaten met programma's. Elke parameter
    heeft daar een uitleg.
 4. Plak `homeassistant/dashboard.yaml` in een nieuw dashboard. Er is geen HACS voor nodig.
-5. Heb je [apexcharts-card](https://github.com/RomRider/apexcharts-card), plak dan ook
-   `homeassistant/grafieken.yaml` in een dashboard: verbruik en opwek, verbruik per onderdeel en
-   lading van de accu onder elkaar op één tijdas. Pas daar de namen van de onderdelen aan als je
-   ze anders genoemd hebt.
+5. Heb je [apexcharts-card](https://github.com/RomRider/apexcharts-card), dan zijn er ook
+   grafieken: verbruik en opwek, verbruik per onderdeel en lading van de accu onder elkaar op
+   één tijdas. Twee manieren:
+   - als eigen dashboard: maak een nieuw dashboard, open de **ruwe configuratie-editor** en
+     plak `homeassistant/grafieken.yaml` erin;
+   - als kaart in een bestaand dashboard: **Kaart toevoegen → Handmatig** en plak
+     `homeassistant/grafieken-kaart.yaml` erin. (Plak je het hele dashboard in een kaart, dan
+     meldt Home Assistant "geen type opgegeven".)
+
+   Pas de namen van de onderdelen aan als je ze anders genoemd hebt.
 
 Alles is achteraf te wijzigen via Configureren; er zijn geen YAML-bestanden nodig.
 
@@ -127,7 +133,8 @@ custom_components/huis_ems/        de integratie
   config_flow.py                   instelschermen
   frontend/huis-ems-card.js        overzichtskaart met tijdlijn
 homeassistant/dashboard.yaml       dashboard
-homeassistant/grafieken.yaml       grafieken met apexcharts-card
+homeassistant/grafieken.yaml       grafieken met apexcharts-card (een heel dashboard)
+homeassistant/grafieken-kaart.yaml dezelfde grafieken als één kaart
 tools/make_icon.py                 pictogram tekenen
 docs/werking.md                    hoe elk onderdeel voorspeld wordt
 docs/accu-adapters.md              accu's uitlezen

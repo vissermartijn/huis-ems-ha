@@ -99,7 +99,24 @@ def main():
         failed += not good
         print(("ok  " if good else "FOUT"), f"{r['name']:<20} {r['label']:<5}", r.get("error") or f"{r['n']} punten")
     print(f"{len(cases)} generators, {failed} fout")
-    sys.exit(1 if failed else 0)
+    # De losse kaart moet precies de grafieken van het dashboard bevatten.
+    card = yaml.safe_load((ROOT / "homeassistant" / "grafieken-kaart.yaml").read_text(encoding="utf-8"))
+
+    def stacks(node):
+        if isinstance(node, dict):
+            if node.get("type") == "vertical-stack":
+                yield node
+            for v in node.values():
+                yield from stacks(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from stacks(v)
+
+    stack = dict(next(stacks(board)))
+    stack.pop("grid_options", None)
+    same = stack == card
+    print("losse kaart gelijk aan het dashboard:", "ja" if same else "NEE")
+    sys.exit(1 if failed or not same else 0)
 
 
 if __name__ == "__main__":

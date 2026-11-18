@@ -1,0 +1,316 @@
+# De drie grafieken van Huis EMS als één kaart, om in een bestaand dashboard te zetten.
+# Dashboard bewerken -> Kaart toevoegen -> Handmatig, en dit erin plakken.
+# Vereist apexcharts-card (via Marketplace). Het hele dashboard staat in grafieken.yaml.
+type: vertical-stack
+cards:
+  # ================= Verbruik en opwek =================
+  - type: custom:apexcharts-card
+    update_interval: 5min
+    graph_span: 60h
+    span:
+      offset: +36h
+    now:
+      show: true
+      label: Nu
+    header:
+      show: true
+      title: Verbruik en opwek
+      standard_format: false
+      show_states: true
+      colorize_states: true
+    apex_config:
+      chart:
+        foreColor: rgb(117, 117, 117)
+        height: 320px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+      stroke:
+        dashArray: [0, 5, 0, 5]   # voorspeld gestreept
+      yaxis:
+        min: 0
+        decimalsInFloat: 0
+        labels:
+          minWidth: 45
+          maxWidth: 45
+    series:
+      - entity: sensor.huis_ems_terugblik
+        extend_to: false
+        name: Verbruik
+        type: line
+        color: rgb(30, 136, 229)
+        stroke_width: 2
+        unit: W
+        float_precision: 0
+        show:
+          in_header: false
+        data_generator: |
+          return (entity.attributes.kwartieren || []).filter((r) => Date.parse(r.t) >= start)
+            .filter((r) => r.werkelijk_verbruik_w != null)
+            .map((r) => [Date.parse(r.t), r.werkelijk_verbruik_w]);
+      - entity: sensor.huis_ems_plan
+        name: Verbruik voorspeld
+        type: line
+        color: rgb(30, 136, 229)
+        stroke_width: 2
+        unit: W
+        float_precision: 0
+        show:
+          in_header: false
+        data_generator: |
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), r.etmaal_verbruik_w ?? r.verwacht_verbruik_w ?? null]);
+          return oud.concat((a.verbruik_w || []).map((v, i) => [t0 + i * stap, v]));
+      - entity: sensor.huis_ems_terugblik
+        extend_to: false
+        name: Zon
+        type: area
+        color: rgb(255, 152, 0)
+        opacity: 0.3
+        stroke_width: 2
+        unit: W
+        float_precision: 0
+        show:
+          in_header: false
+        data_generator: |
+          return (entity.attributes.kwartieren || []).filter((r) => Date.parse(r.t) >= start)
+            .filter((r) => r.werkelijk_zon_w != null)
+            .map((r) => [Date.parse(r.t), r.werkelijk_zon_w]);
+      - entity: sensor.huis_ems_plan
+        name: Zon voorspeld
+        type: line
+        color: rgb(255, 152, 0)
+        stroke_width: 2
+        unit: W
+        float_precision: 0
+        show:
+          in_header: false
+        data_generator: |
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), r.etmaal_zon_w ?? r.verwacht_zon_w ?? null]);
+          return oud.concat((a.zon_w || []).map((v, i) => [t0 + i * stap, v]));
+      # ---------- Alleen header: nu en de komende 24 uur ----------
+      - entity: sensor.huis_ems_verbruik_dit_kwartier
+        name: Verbruik nu
+        color: rgb(30, 136, 229)
+        float_precision: 0
+        show:
+          in_chart: false
+      - entity: sensor.huis_ems_zon_dit_kwartier
+        name: Zon nu
+        color: rgb(255, 152, 0)
+        float_precision: 0
+        show:
+          in_chart: false
+      - entity: sensor.huis_ems_verwacht_verbruik_komende_24_uur
+        name: Verbruik 24 uur
+        color: rgb(30, 136, 229)
+        float_precision: 1
+        show:
+          in_chart: false
+      - entity: sensor.huis_ems_verwachte_zon_komende_24_uur
+        name: Zon 24 uur
+        color: rgb(255, 152, 0)
+        float_precision: 1
+        show:
+          in_chart: false
+
+  # ================= Verbruik per onderdeel =================
+  - type: custom:apexcharts-card
+    update_interval: 5min
+    graph_span: 60h
+    span:
+      offset: +36h
+    now:
+      show: true
+    stacked: true
+    header:
+      show: true
+      title: Verbruik per onderdeel (gemeten, daarna voorspeld)
+      standard_format: false
+      show_states: false
+    apex_config:
+      chart:
+        foreColor: rgb(117, 117, 117)
+        height: 260px
+      legend:
+        show: true
+      tooltip:
+        shared: true
+      plotOptions:
+        bar:
+          columnWidth: 95%
+      yaxis:
+        min: 0
+        decimalsInFloat: 0
+        labels:
+          minWidth: 45
+          maxWidth: 45
+    series:
+      - entity: sensor.huis_ems_plan
+        name: Verwarmen
+        type: column
+        color: rgb(0, 137, 123)
+        unit: W
+        float_precision: 0
+        data_generator: |
+          const NAAM = 'warmtepomp verwarmen';
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), (r.werkelijk || {})[NAAM] ?? null]);
+          const vooruit = ((a.onderdelen_w || {})[NAAM] || []).map((v, i) => [t0 + i * stap, v]);
+          return oud.concat(vooruit);
+      - entity: sensor.huis_ems_plan
+        name: Tapwater
+        type: column
+        color: rgb(253, 216, 53)
+        unit: W
+        float_precision: 0
+        data_generator: |
+          const NAAM = 'warmtepomp tapwater';
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), (r.werkelijk || {})[NAAM] ?? null]);
+          const vooruit = ((a.onderdelen_w || {})[NAAM] || []).map((v, i) => [t0 + i * stap, v]);
+          return oud.concat(vooruit);
+      - entity: sensor.huis_ems_plan
+        name: Hottub
+        type: column
+        color: rgb(236, 64, 122)
+        unit: W
+        float_precision: 0
+        data_generator: |
+          const NAAM = 'Hottub';
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), (r.werkelijk || {})[NAAM] ?? null]);
+          const vooruit = ((a.onderdelen_w || {})[NAAM] || []).map((v, i) => [t0 + i * stap, v]);
+          return oud.concat(vooruit);
+      - entity: sensor.huis_ems_plan
+        name: Wasmachine
+        type: column
+        color: rgb(67, 160, 71)
+        unit: W
+        float_precision: 0
+        data_generator: |
+          const NAAM = 'Wasmachine';
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), (r.werkelijk || {})[NAAM] ?? null]);
+          const vooruit = ((a.onderdelen_w || {})[NAAM] || []).map((v, i) => [t0 + i * stap, v]);
+          return oud.concat(vooruit);
+      - entity: sensor.huis_ems_plan
+        name: Vaatwasser
+        type: column
+        color: rgb(94, 53, 177)
+        unit: W
+        float_precision: 0
+        data_generator: |
+          const NAAM = 'Vaatwasser';
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), (r.werkelijk || {})[NAAM] ?? null]);
+          const vooruit = ((a.onderdelen_w || {})[NAAM] || []).map((v, i) => [t0 + i * stap, v]);
+          return oud.concat(vooruit);
+      - entity: sensor.huis_ems_plan
+        name: Overig
+        type: column
+        color: rgb(158, 158, 158)
+        unit: W
+        float_precision: 0
+        data_generator: |
+          const NAAM = 'overig';
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), (r.werkelijk || {})[NAAM] ?? null]);
+          const vooruit = ((a.onderdelen_w || {})[NAAM] || []).map((v, i) => [t0 + i * stap, v]);
+          return oud.concat(vooruit);
+
+  # ================= Lading accu =================
+  - type: custom:apexcharts-card
+    update_interval: 5min
+    graph_span: 60h
+    span:
+      offset: +36h
+    now:
+      show: true
+    header:
+      show: true
+      title: Lading accu
+      standard_format: false
+      show_states: true
+      colorize_states: true
+    apex_config:
+      chart:
+        foreColor: rgb(117, 117, 117)
+        height: 180px
+      legend:
+        show: false
+      tooltip:
+        shared: true
+      stroke:
+        dashArray: [0, 5]
+      yaxis:
+        min: 0
+        max: 100
+        tickAmount: 2
+        decimalsInFloat: 0
+        labels:
+          minWidth: 45
+          maxWidth: 45
+    series:
+      - entity: sensor.huis_ems_terugblik
+        extend_to: false
+        name: Lading
+        type: line
+        color: rgb(67, 160, 71)
+        stroke_width: 2
+        unit: '%'
+        float_precision: 0
+        show:
+          in_header: false
+        data_generator: |
+          return (entity.attributes.kwartieren || []).filter((r) => Date.parse(r.t) >= start)
+            .filter((r) => r.soc_pct != null)
+            .map((r) => [Date.parse(r.t), r.soc_pct]);
+      - entity: sensor.huis_ems_plan
+        name: Lading voorspeld
+        type: line
+        color: rgb(67, 160, 71)
+        stroke_width: 2
+        unit: '%'
+        float_precision: 0
+        show:
+          in_header: false
+        data_generator: |
+          const a = entity.attributes;
+          const t0 = Date.parse(a.start), stap = (a.stap_min || 15) * 60000;
+          const k = hass.states['sensor.huis_ems_terugblik']?.attributes?.kwartieren || [];
+          const oud = k.filter((r) => Date.parse(r.t) >= start && Date.parse(r.t) < t0)
+            .map((r) => [Date.parse(r.t), r.etmaal_soc_pct ?? null]);
+          return oud.concat((a.soc_pct || []).map((v, i) => [t0 + i * stap, v]));
+      - entity: sensor.huis_ems_accu_lading
+        name: Nu
+        color: rgb(67, 160, 71)
+        float_precision: 0
+        show:
+          in_chart: false
