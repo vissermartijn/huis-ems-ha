@@ -94,6 +94,14 @@ class CycleTest(unittest.TestCase):
         ongoing = cy.cycles_from_states([(self.T0, "run")], {"run"}, self.T0 + timedelta(hours=1))
         self.assertTrue(ongoing[0].ongoing)
 
+    def test_offline_counts_as_off(self):
+        m = lambda x: self.T0 + timedelta(minutes=x)
+        states = [(m(0), "unavailable"), (m(5), "ready"), (m(10), "run"), (m(100), "unavailable"),
+                  (m(300), "ready"), (m(305), "run"), (m(380), "finished"), (m(390), "unavailable")]
+        found = cy.cycles_from_states(states, {"run", "pause", "actionrequired"}, m(500))
+        self.assertEqual([(c.start, c.end, c.ongoing) for c in found],
+                         [(m(10), m(100), False), (m(305), m(380), False)])
+
     def test_learns_habit(self):
         found = cy.cycles_from_states(self.runs(14), {"run", "pause"}, self.T0 + timedelta(days=14))
         for c in found:

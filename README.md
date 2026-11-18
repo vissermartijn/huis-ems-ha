@@ -76,9 +76,12 @@ Alles is achteraf te wijzigen via Configureren; er zijn geen YAML-bestanden nodi
 
 ### Apparaten via Home Connect
 
-Kies bij **Apparaat toevoegen** de bedrijfstoestand (`sensor.<apparaat>_operation_state`) en de
-eindtijd (`sensor.<apparaat>_program_finish_time`). Loopt een programma (`run`, `pause`) of staat
-het op uitgestelde start (`delayedstart`), dan plant het EMS het verbruik in. Zonder eigen
+Kies bij **Apparaat toevoegen** de bedrijfstoestand (in een Nederlandstalige HA
+`sensor.<apparaat>_status`, in een Engelstalige `sensor.<apparaat>_operation_state`) en de
+eindtijd (`sensor.<apparaat>_programma_eindtijd` of `..._program_finish_time`). Loopt een
+programma (`run`, `pause`, `actionrequired`) of staat het op uitgestelde start (`delayedstart`),
+dan plant het EMS het verbruik in. Is het apparaat onbereikbaar, dan telt het als uit: veel
+apparaten gaan van de wifi zodra ze uit staan. Zonder eigen
 kWh-meter schat het EMS het verbruik per keer uit hoeveel meer het huis verbruikt terwijl het
 apparaat draait. Een binaire sensor die aan is zolang het apparaat draait, werkt ook.
 

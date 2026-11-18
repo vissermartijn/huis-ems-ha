@@ -35,7 +35,6 @@ DEFAULTS = {
 PRIOR_CYCLES = 2      # zo zwaar telt de standaardwaarde mee bij het leren
 MERGE_GAP = timedelta(minutes=10)   # korter onderbroken telt als één keer
 
-
 @dataclass
 class Cycle:
     start: object          # tijdzone-bewuste datetime (lokale tijd)
@@ -62,7 +61,11 @@ class Habit:
 
 
 def cycles_from_states(states, on_states, until):
-    """[(tijdstip, toestand)] op tijd gesorteerd -> [Cycle]. Korte onderbrekingen tellen niet."""
+    """[(tijdstip, toestand)] op tijd gesorteerd -> [Cycle]. Korte onderbrekingen tellen niet.
+
+    Onbereikbaar (`unavailable`) telt als uit: een wasmachine gaat van de wifi zodra hij uit
+    staat.
+    """
     out, start = [], None
     for t, state in states:
         if state in on_states:

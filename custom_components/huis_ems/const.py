@@ -53,7 +53,7 @@ A_ID, A_NAME, A_KIND = "id", "name", "soort"
 A_STATE, A_FINISH, A_ENERGY = "state", "finish_time", "energy"
 A_KWH, A_MINUTES = "kwh_per_cycle", "minutes"
 KINDS = ["wasmachine", "vaatwasser", "droger", "overig"]
-RUN_STATES = {"run", "pause", "on"}          # programma loopt (Home Connect, of een binary_sensor)
+RUN_STATES = {"run", "pause", "actionrequired", "on"}         # programma loopt (Home Connect, of een binary_sensor)
 DELAYED_STATES = {"delayedstart"}            # programma staat op uitgestelde start
 CYCLE_DAYS = 28              # zo ver terug leert het EMS de gewoontes (zover de recorder reikt)
 
