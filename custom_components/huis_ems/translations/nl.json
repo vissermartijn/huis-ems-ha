@@ -117,12 +117,13 @@
       },
       "apparaat": {
         "title": "Apparaat met programma's",
-        "description": "Voor een wasmachine, vaatwasser of droger, bijvoorbeeld via Home Connect. Kies de bedrijfstoestand (Operation state): loopt er een programma of staat het op uitgestelde start, dan plant het EMS het verbruik daar in, tot de eindtijd als je die ook kiest (Program finish time).\n\nDaarnaast leert het EMS uit de afgelopen weken hoe vaak en op welk uur het apparaat meestal start, en neemt het die gewoonte mee in de voorspelling.\n\nZonder eigen kWh-meter schat het EMS het verbruik per keer uit wat het huis meer verbruikt terwijl het apparaat draait; tot dat geleerd is, geldt het standaardverbruik hieronder.",
+        "description": "Voor een wasmachine, vaatwasser of droger, bijvoorbeeld via Home Connect. Kies de bedrijfstoestand (Operation state): loopt er een programma of staat het op uitgestelde start, dan plant het EMS het verbruik daar in, tot de eindtijd als je die ook kiest (Program finish time).\n\nDaarnaast leert het EMS uit de afgelopen maanden hoe vaak en op welk uur het apparaat meestal start, apart voor werkdagen en het weekend, en neemt het die gewoonte mee in de voorspelling. Het houdt daarvoor een eigen logboek bij, omdat de recorder maar 10 dagen bewaart.\n\nZonder eigen kWh-meter schat het EMS het verbruik per keer uit wat het huis meer verbruikt terwijl het apparaat draait; tot dat geleerd is, geldt het standaardverbruik hieronder.",
         "data": {
           "name": "Naam",
           "soort": "Soort apparaat",
           "state": "Bedrijfstoestand (of een binaire sensor die aan is zolang hij draait)",
           "finish_time": "Eindtijd van het programma (optioneel)",
+          "program": "Actieve programma (optioneel, komt in het logboek)",
           "energy": "Verbruik (kWh-teller, optioneel)",
           "kwh_per_cycle": "Verbruik per keer tot het geleerd is (optioneel)",
           "minutes": "Duur van een programma tot het geleerd is (optioneel)",

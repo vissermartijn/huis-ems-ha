@@ -96,6 +96,8 @@ def _appliance_schema(editing):
         vol.Required(A_STATE): sel.EntitySelector(sel.EntitySelectorConfig(
             domain=["sensor", "binary_sensor"])),
         vol.Optional(A_FINISH): _entity("sensor", "timestamp"),
+        vol.Optional(A_PROGRAM): sel.EntitySelector(sel.EntitySelectorConfig(
+            domain=["select", "sensor"])),
         vol.Optional(A_ENERGY): _entity("sensor", "energy"),
         vol.Optional(A_KWH): _number(0.05, 10, 0.05, "kWh"),
         vol.Optional(A_MINUTES): _number(5, 600, 5, "min"),

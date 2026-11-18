@@ -117,12 +117,13 @@
       },
       "apparaat": {
         "title": "Appliance with programs",
-        "description": "For a washer, dishwasher or dryer, for example via Home Connect. Choose the operation state: when a program runs or has a delayed start, the EMS schedules its use, up to the finish time if you also choose that sensor.\n\nThe EMS also learns from the past weeks how often and at what hour the appliance usually starts, and includes that habit in the forecast.\n\nWithout its own kWh meter the EMS estimates the use per cycle from how much more the house uses while the appliance runs; until learned, the default below applies.",
+        "description": "For a washer, dishwasher or dryer, for example via Home Connect. Choose the operation state: when a program runs or has a delayed start, the EMS schedules its use, up to the finish time if you also choose that sensor.\n\nThe EMS also learns from the past months how often and at what hour the appliance usually starts, separately for workdays and weekends, and includes that habit in the forecast. It keeps its own log for this, because the recorder only keeps 10 days.\n\nWithout its own kWh meter the EMS estimates the use per cycle from how much more the house uses while the appliance runs; until learned, the default below applies.",
         "data": {
           "name": "Name",
           "soort": "Kind of appliance",
           "state": "Operation state (or a binary sensor that is on while it runs)",
           "finish_time": "Program finish time (optional)",
+          "program": "Active program (optional, kept in the log)",
           "energy": "Consumption (kWh meter, optional)",
           "kwh_per_cycle": "Energy per cycle until learned (optional)",
           "minutes": "Program duration until learned (optional)",

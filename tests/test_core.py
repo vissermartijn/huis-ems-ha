@@ -102,6 +102,53 @@ class CycleTest(unittest.TestCase):
         self.assertEqual([(c.start, c.end, c.ongoing) for c in found],
                          [(m(10), m(100), False), (m(305), m(380), False)])
 
+    def test_log_round_trip(self):
+        c = cy.Cycle(self.T0, self.T0 + timedelta(hours=2), kwh=0.8123, program="eco_50")
+        back = cy.from_log(cy.to_log(c), datetime.fromisoformat)
+        self.assertEqual((back.start, back.end, back.kwh, back.program), (c.start, c.end, 0.812, "eco_50"))
+
+    def test_merge_log_keeps_older_and_fills_gaps(self):
+        d = lambda days, h=19: self.T0 + timedelta(days=days, hours=h)
+        logged = [cy.Cycle(d(k), d(k, 21), kwh=0.7, program="eco") for k in range(20)]
+        window = d(10, 20)                          # recorder begint midden in de cyclus van dag 10
+        recent = [cy.Cycle(window, d(10, 21))] + [cy.Cycle(d(k), d(k, 21)) for k in range(11, 20)]
+        recent[-1].kwh = 0.9                        # recorder weet dit verbruik nog
+        merged = cy.merge_log(logged, recent, window)
+        self.assertEqual(len(merged), 20)
+        self.assertEqual(merged[10].start, d(10))   # afgekapte cyclus vervangen door de volledige
+        self.assertEqual(merged[15].kwh, 0.7)       # verbruik uit het logboek aangevuld
+        self.assertEqual(merged[15].program, "eco")
+        self.assertEqual(merged[-1].kwh, 0.9)       # recorder gaat voor
+
+    def test_program_at(self):
+        m = lambda x: self.T0 + timedelta(minutes=x)
+        c = cy.Cycle(m(60), m(180))
+        states = [(m(0), "unknown"), (m(59), "eco_50"), (m(190), "unknown")]
+        self.assertEqual(cy.program_at(c, states), "eco_50")
+        self.assertEqual(cy.program_at(c, [(m(0), "unknown"), (m(62), "intensiv_70")]), "intensiv_70")
+        self.assertIsNone(cy.program_at(c, [(m(0), "unavailable")]))
+
+    def test_weekend_habit(self):
+        # Acht weken: op zaterdag en zondag om 10 uur wassen, door de week één keer om 20 uur.
+        cycles = []
+        for week in range(8):
+            for day, hour in ((2, 20), (5, 10), (6, 10)):
+                s = self.T0 + timedelta(days=7 * week + day, hours=hour)
+                cycles.append(cy.Cycle(s, s + timedelta(hours=2), kwh=0.9))
+        first, last = self.T0, self.T0 + timedelta(days=56)
+        habit = cy.learn("wasmachine", cycles, 56, span=(first, last))
+        saturday, monday = (self.T0 + timedelta(days=5)).date(), self.T0.date()
+        self.assertGreater(habit.rate_on(saturday), 0.8)
+        self.assertLess(habit.rate_on(monday), 0.3)
+        self.assertEqual(habit.usual_hours(1, habit.hours_on(saturday)), [10])
+        self.assertEqual(habit.usual_hours(1, habit.hours_on(monday)), [20])
+        # Te weinig historie: geen eigen weekend.
+        self.assertEqual(cy.learn("wasmachine", cycles[:3], 10, span=(first, first + timedelta(days=10))).week, {})
+        # De voorspelling volgt het weekpatroon: zaterdag meer dan maandag.
+        starts, hours = quarters(self.T0 + timedelta(days=60), 48 * 4)    # vrijdag 00:00, twee dagen
+        values, _ = cy.forecast(habit, starts, hours, starts[0])
+        self.assertGreater(sum(values[96:]), 2 * sum(values[:96]))
+
     def test_learns_habit(self):
         found = cy.cycles_from_states(self.runs(14), {"run", "pause"}, self.T0 + timedelta(days=14))
         for c in found:

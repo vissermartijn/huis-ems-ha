@@ -10,7 +10,7 @@ EMS kijkt mee, voorspelt en legt vast hoe goed die voorspelling was.
 | Warmtepomp verwarmen | kWh-teller van de warmtepomp, buitentemperatuur, weersverwachting | profiel per uur van de dag plus extra verbruik per graad onder de stookgrens, over het 24-uursgemiddelde van de temperatuur |
 | Warmtepomp tapwater | dezelfde teller, plus de melding "tapwater bezig" | cycli: hoe vaak per dag, op welk uur en hoeveel per keer; een lopende cyclus wordt afgemaakt |
 | Verbruiker met eigen meter (hottub) | eigen kWh-teller, eventueel thermostaat | eigen profiel per uur en temperatuur; de stand van de thermostaat stelt de eerstkomende uren bij |
-| Apparaten (wasmachine, vaatwasser, droger) | bedrijfstoestand en eindtijd uit Home Connect | wat loopt of op uitgestelde start staat, precies; daarnaast de gewoonte van de afgelopen weken |
+| Apparaten (wasmachine, vaatwasser, droger) | bedrijfstoestand en eindtijd uit Home Connect | wat loopt of op uitgestelde start staat, precies; daarnaast de gewoonte van de afgelopen maanden, per werkdag en weekend |
 | Overig | wat overblijft van het huisverbruik | profiel per uur van de dag en de temperatuur, eventueel een eigen weekendprofiel, plus wat er nu afwijkt |
 | Zon | de voorspelling in het Energie-dashboard | eventueel bijgesteld met de zonfactor |
 | Accu | lading en vermogen, uitgelezen | op zelfverbruik doorgerekend vanaf de lading van nu |
@@ -27,12 +27,20 @@ het gemiddelde van de andere uren.
 
 Tapwater en de apparaten draaien in cycli met een herkenbaar verloop: een wasmachine verbruikt
 het meest bij het opwarmen aan het begin, een vaatwasser bij het begin en bij het naspoelen. Het
-EMS leest de historie van de recorder (zo ver als die reikt, hooguit 28 dagen) en leert per
-apparaat:
+EMS leert per apparaat over de laatste 13 weken:
 
-- **hoe vaak** het per dag start;
-- **op welk uur** meestal (met een beetje spreiding naar de uren ernaast);
+- **hoe vaak** het per dag start, apart voor werkdagen en het weekend zodra er drie weken
+  historie is;
+- **op welk uur** meestal (met een beetje spreiding naar de uren ernaast), ook apart voor
+  werkdag en weekend;
 - **hoe lang** een programma duurt (mediaan) en **hoeveel** het verbruikt.
+
+De recorder bewaart toestanden en 5-minutenstatistieken standaard maar 10 dagen. Daarom houdt het
+EMS een eigen logboek bij: per afgelopen programma of tapwaterbeurt één regel met begin, einde,
+verbruik en (als je de entiteit kiest) het programma. Dat logboek staat in de opslag van de
+integratie, blijft een jaar staan en is een paar kB groot. Wat de recorder nog kent, gaat voor;
+wat hij vergeten is, komt uit het logboek. Het aantal regels staat in het verbruiksmodel onder
+`in_logboek`.
 
 Het verbruik per keer komt uit een eigen kWh-meter als die er is (voor tapwater: de teller van
 de warmtepomp, per vijf minuten). Zonder meter schat het EMS het uit hoeveel meer het huis

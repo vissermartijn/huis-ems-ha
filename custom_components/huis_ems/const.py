@@ -51,11 +51,11 @@ THERMOSTAT_BAND = 0.3        # graden onder de ingestelde temperatuur waarbij hi
 CONF_APPLIANCES = "appliances"
 A_ID, A_NAME, A_KIND = "id", "name", "soort"
 A_STATE, A_FINISH, A_ENERGY = "state", "finish_time", "energy"
-A_KWH, A_MINUTES = "kwh_per_cycle", "minutes"
+A_KWH, A_MINUTES, A_PROGRAM = "kwh_per_cycle", "minutes", "program"
 KINDS = ["wasmachine", "vaatwasser", "droger", "overig"]
 RUN_STATES = {"run", "pause", "actionrequired", "on"}         # programma loopt (Home Connect, of een binary_sensor)
 DELAYED_STATES = {"delayedstart"}            # programma staat op uitgestelde start
-CYCLE_DAYS = 28              # zo ver terug leert het EMS de gewoontes (zover de recorder reikt)
+CYCLE_DAYS = 91              # zo ver terug leert het EMS de gewoontes (uit zijn eigen logboek)
 
 # Hoe lang een afwijking van nu nog doorwerkt in de voorspelling (halfwaardetijd, uren)
 PERSIST_REST_H = 1.0

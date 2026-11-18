@@ -12,7 +12,7 @@ warmtepomp op zijn stooklijn.
 | **warmtepomp verwarmen** | eigen kWh-teller, buitentemperatuur en weersverwachting: verbruik per uur van de dag plus extra per graad kou |
 | **warmtepomp tapwater** | dezelfde teller en de melding "tapwater bezig": hoe vaak, wanneer en hoeveel per keer, en een lopende cyclus |
 | **verbruikers met een eigen meter**, zoals een hottub | eigen profiel per uur en temperatuur, bijgesteld op de thermostaat |
-| **apparaten met programma's** (Home Connect: wasmachine, vaatwasser, droger) | wat loopt of op uitgestelde start staat, tot de eindtijd; daarnaast de gewoonte van de afgelopen weken |
+| **apparaten met programma's** (Home Connect: wasmachine, vaatwasser, droger) | wat loopt of op uitgestelde start staat, tot de eindtijd; daarnaast de gewoonte van de afgelopen maanden, per werkdag en weekend |
 | **overig** | het patroon per uur van de dag en de temperatuur, en wat er het laatste half uur anders ging |
 | **zon** | de voorspelling die al in je Energie-dashboard staat |
 | **accu** | vanaf de lading van nu, zoals hij op zelfverbruik laadt en ontlaadt: wanneer vol, wanneer leeg, hoeveel van het net |
@@ -140,6 +140,7 @@ docs/accu-adapters.md              accu's uitlezen
   EMS zelf.
 - Rendement 86% heen en terug is een aanname voor AC-gekoppelde accu's; het telt alleen mee in
   de vooruitblik.
-- De recorder van Home Assistant bewaart standaard 10 dagen; zo ver kijkt het EMS terug voor de
-  gewoontes van de apparaten en het tapwater. Langer bewaren (`purge_keep_days`) maakt die
-  gewoontes stabieler.
+- De recorder van Home Assistant bewaart standaard 10 dagen. Voor de gewoontes van de apparaten
+  en het tapwater houdt het EMS daarom een eigen logboek bij (een jaar, een paar kB); de
+  recorder hoeft niet langer te bewaren. Vlak na de installatie kent het EMS dus alleen de
+  laatste 10 dagen, en het verschil tussen werkdag en weekend pas na drie weken.

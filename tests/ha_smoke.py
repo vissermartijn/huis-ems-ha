@@ -333,6 +333,10 @@ def main():
     model = state("sensor.huis_ems_verbruiksmodel")["attributes"]
     expect("Vaatwasser" in (model.get("apparaten") or {}), "vaatwasser: gewoonte staat in het verbruiksmodel")
     call("/api/services/input_select/select_option", {"entity_id": "input_select.vaatwasser", "option": "finished"})
+    time.sleep(20)
+    logged = ((state("sensor.huis_ems_verbruiksmodel")["attributes"].get("apparaten") or {})
+              .get("Vaatwasser") or {}).get("in_logboek", 0)
+    expect(logged >= 1, f"vaatwasser: het afgelopen programma staat in het eigen logboek ({logged})")
 
     # Meter valt weg: geen overschot meer bekend.
     meter.stop()

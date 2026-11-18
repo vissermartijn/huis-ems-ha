@@ -86,6 +86,7 @@ class EmsCoordinator:
         self.thermostat: dict[str, tuple[float, float]] = {}
         self.habits: dict[str, cy.Habit] = {}
         self.cycles: dict[str, list] = {}
+        self.cycle_log: dict = {"since": {}, "cycles": {}}   # eigen logboek, los van de recorder
         self.model_note = "Nog niet geleerd; er wordt met een vast verbruik gerekend."
         self.model_info: dict[str, dict] = {}
         self.anomaly: dict[str, float] = {}
@@ -106,6 +107,7 @@ class EmsCoordinator:
         self._last_save: datetime | None = None
         self._last_notify: datetime | None = None
         self._planning = False
+        self._replan = False
         self.meter = Meter(hass, self.opt, self._on_sample)
         self.drivers: dict[str, ZendureDriver] = {}
         self.meter_stale = False
@@ -159,7 +161,8 @@ class EmsCoordinator:
             out[a[A_ID]] = {"soort": a.get(A_KIND, "overig"), "toestand": a[A_STATE], "aan": RUN_STATES,
                             "uitgesteld": DELAYED_STATES, "einde": a.get(A_FINISH),
                             "meters": [a[A_ENERGY]] if a.get(A_ENERGY) else [],
-                            "kwh": a.get(A_KWH), "min": a.get(A_MINUTES)}
+                            "kwh": a.get(A_KWH), "min": a.get(A_MINUTES),
+                            "programma": a.get(A_PROGRAM)}
         return out
 
     # --- levensloop -------------------------------------------------------
@@ -171,6 +174,8 @@ class EmsCoordinator:
         # Kwartieren van voor versie 0.7 hebben geen onderdelen; die tellen niet meer mee.
         self.history = [r for r in data.get("history", []) if "verwacht" in r]
         self.day_ahead = data.get("day_ahead", {})
+        log = data.get("cycle_log") or {}
+        self.cycle_log = {"since": dict(log.get("since") or {}), "cycles": dict(log.get("cycles") or {})}
         self._unsubs.append(async_track_time_change(
             self.hass, self._on_quarter, minute=range(0, 60, SLOT_MIN), second=5))
         self._unsubs.append(async_track_time_interval(
@@ -198,7 +203,8 @@ class EmsCoordinator:
         self.day_ahead = {k: v for k, v in self.day_ahead.items() if k >= cutoff}
         await self.store.async_save({
             "settings": self.settings, "virtual_soc": self.virtual_soc,
-            "history": self.history[-HISTORY_DAYS * 96:], "day_ahead": self.day_ahead})
+            "history": self.history[-HISTORY_DAYS * 96:], "day_ahead": self.day_ahead,
+            "cycle_log": self.cycle_log})
 
     @callback
     def async_add_listener(self, update):
@@ -528,7 +534,12 @@ class EmsCoordinator:
             self.habits, self.cycles = {}, {}
             return
         start = now - timedelta(days=CYCLE_DAYS)
-        found, days = {}, {}
+        try:   # net gewijzigde toestand eerst laten wegschrijven
+            from homeassistant.components.recorder import get_instance
+            await get_instance(self.hass).async_block_till_done()
+        except Exception as err:
+            _LOGGER.debug("Recorder niet bij te werken: %s", err)
+        found, window = {}, {}
         for key, src in sources.items():
             try:
                 states = await self._state_history(src["toestand"], start)
@@ -536,9 +547,22 @@ class EmsCoordinator:
                 _LOGGER.warning("Historie van %s niet te lezen: %s", src["toestand"], err)
                 states = []
             local = [(dt_util.as_local(t), s) for t, s in states]
+            live = self.hass.states.get(src["toestand"])
+            if live is not None and live.state not in src["aan"]:
+                # De recorder loopt soms een paar seconden achter op de echte toestand.
+                local.append((dt_util.as_local(live.last_changed), live.state))
+                local.sort(key=lambda ts: ts[0])
             found[key] = cy.cycles_from_states(local, src["aan"], dt_util.as_local(now))
-            first = next((t for t, s in local if s not in ("unavailable", "unknown")), None)
-            days[key] = 0.0 if first is None else (now - first).total_seconds() / 86400
+            window[key] = next((t for t, s in local if s not in ("unavailable", "unknown")), None)
+            if src.get("programma") and found[key]:
+                try:
+                    progs = [(dt_util.as_local(t), s) for t, s in
+                             await self._state_history(src["programma"], found[key][0].start - timedelta(hours=1))]
+                except Exception as err:
+                    _LOGGER.warning("Historie van %s niet te lezen: %s", src["programma"], err)
+                    progs = []
+                for c in found[key]:
+                    c.program = cy.program_at(c, progs)
         busy = [c for key, cs in found.items() if key != DHW for c in cs]
         baseline = None
         for key, src in sources.items():
@@ -562,19 +586,50 @@ class EmsCoordinator:
                         c.kwh = cy.residual_energy(c, quarters, baseline)
         habits, info = {}, {}
         names = self.names()
+        local_now = dt_util.as_local(now)
         for key, src in sources.items():
-            h = cy.learn(src["soort"], found[key], days[key], src["kwh"], src["min"])
+            cycles = self._with_log(key, found[key], window[key], local_now)
+            since = self.cycle_log["since"].get(key)
+            first = dt_util.as_local(datetime.fromisoformat(since)) if since else None
+            first = max(first, dt_util.as_local(start)) if first else None
+            days = 0.0 if first is None else (local_now - first).total_seconds() / 86400
+            cycles = [c for c in cycles if first is None or c.start >= first]
+            h = cy.learn(src["soort"], cycles, days, src["kwh"], src["min"],
+                         span=(first, local_now) if first else None)
             habits[key] = h
-            info[names.get(key, key)] = {
+            found[key] = cycles
+            item = {
                 "keer": h.cycles, "dagen_historie": round(h.days, 1),
                 "keer_per_week": round(h.rate_per_day * 7, 1),
                 "meestal_rond": [f"{u:02d}:00" for u in h.usual_hours()],
                 "kwh_per_keer": round(h.kwh, 2), "duur_min": round(h.duration_h * 60),
                 "verbruik_geleerd_van": h.kwh_learned,
                 "verbruik_uit": "meter" if src["meters"] else "patroon van het huis",
+                "in_logboek": len(self.cycle_log["cycles"].get(key, [])),
             }
+            if h.week:
+                item["keer_per_week_werkdagen"] = round(h.week["werkdag"][0] * 5, 1)
+                item["keer_per_weekend"] = round(h.week["weekend"][0] * 2, 1)
+                item["weekend_meestal_rond"] = [f"{u:02d}:00" for u in h.usual_hours(2, h.week["weekend"][1])]
+            if h.programs:
+                item["programmas"] = dict(sorted(h.programs.items(), key=lambda kv: -kv[1]))
+            info[names.get(key, key)] = item
         self.habits, self.cycles = habits, found
         self.cycle_info = info
+        await self._save()
+
+    def _with_log(self, key, recent, window_start, local_now):
+        """Vult de cycli uit de recorder aan met het logboek, en werkt het logboek bij."""
+        parse = lambda s: dt_util.as_local(datetime.fromisoformat(s))
+        logged = [cy.from_log(r, parse) for r in self.cycle_log["cycles"].get(key, [])]
+        if window_start is not None:
+            since = self.cycle_log["since"].get(key)
+            if since is None or parse(since) > window_start:
+                self.cycle_log["since"][key] = window_start.isoformat()
+        merged = cy.merge_log(logged, recent, window_start or local_now) if logged else list(recent)
+        keep_from = local_now - timedelta(days=cy.LOG_DAYS)
+        self.cycle_log["cycles"][key] = [cy.to_log(c) for c in merged if not c.ongoing and c.start >= keep_from]
+        return merged
 
     # --- voorspellen --------------------------------------------------------
 
@@ -748,8 +803,10 @@ class EmsCoordinator:
 
     async def async_plan(self) -> None:
         if self._planning:
+            self._replan = True        # straks nog een keer, met de nieuwste toestand
             return
         self._planning = True
+        self._replan = False
         started = time.perf_counter()
         try:
             await self._plan()
@@ -760,6 +817,8 @@ class EmsCoordinator:
         finally:
             self._planning = False
             self._notify()
+        if self._replan:
+            self.hass.async_create_task(self.async_plan())
 
     def _meter_kwh(self, ids) -> dict[str, float]:
         """Stand van elke kWh-teller die nu een waarde heeft."""

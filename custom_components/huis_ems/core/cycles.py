@@ -41,6 +41,67 @@ class Cycle:
     end: object
     ongoing: bool = False
     kwh: float | None = None
+    program: str | None = None
+
+
+# --- logboek ---------------------------------------------------------------
+# De recorder bewaart toestanden en 5-minutenstatistieken maar ~10 dagen. Het EMS
+# houdt daarom zelf per afgelopen cyclus één regel bij, en leert over maanden.
+
+LOG_DAYS = 365              # zo lang blijft een regel in het logboek staan
+SAME_START = timedelta(minutes=2)
+
+
+def to_log(c):
+    row = {"b": c.start.isoformat(), "e": c.end.isoformat()}
+    if c.kwh is not None:
+        row["kwh"] = round(c.kwh, 3)
+    if c.program:
+        row["prog"] = c.program
+    return row
+
+
+def from_log(row, parse):
+    """Regel uit het logboek -> Cycle; parse zet een ISO-tijd om naar lokale tijd."""
+    return Cycle(parse(row["b"]), parse(row["e"]), False, row.get("kwh"), row.get("prog"))
+
+
+def merge_log(logged, recent, window_start):
+    """Combineert het logboek met de cycli die de recorder nog kent.
+
+    Wat na `window_start` begint, kent de recorder zelf; dat telt, aangevuld met het
+    verbruik en programma uit het logboek als de recorder dat niet meer weet. Wat
+    eerder begon, komt uit het logboek. Een cyclus die de recorder op de rand
+    afgekapt ziet, wordt vervangen door de volledige uit het logboek.
+    """
+    old = [c for c in logged if c.start < window_start - SAME_START]
+    out = list(old)
+    for c in recent:
+        if old and abs(c.start - window_start) <= SAME_START and any(o.end > window_start for o in old):
+            continue                                   # afgekapt op de rand van de recorder
+        match = next((o for o in logged if abs(o.start - c.start) <= SAME_START), None)
+        if match is not None:
+            if c.kwh is None:
+                c.kwh = match.kwh
+            if not c.program:
+                c.program = match.program
+        out.append(c)
+    return sorted(out, key=lambda c: c.start)
+
+
+def program_at(cycle, states):
+    """Het programma dat tijdens de cyclus liep, uit [(tijdstip, programma)]."""
+    current = None
+    for t, state in states:
+        if t > cycle.end:
+            break
+        if state in (None, "", "unknown", "unavailable"):
+            continue
+        if t <= cycle.start + SAME_START:
+            current = state
+        elif current is None:
+            return state
+    return current
 
 
 @dataclass
@@ -54,9 +115,24 @@ class Habit:
     days: float
     kwh_learned: int = 0    # aantal keer waarvan het verbruik bekend was
     profile: list = field(default_factory=list)
+    week: dict = field(default_factory=dict)   # {"werkdag"/"weekend": (keer per dag, kans per uur)}
+    programs: dict = field(default_factory=dict)   # programma -> aantal keer
 
-    def usual_hours(self, count=2):
-        ranked = sorted(range(24), key=lambda h: -self.hour_p[h])
+    @staticmethod
+    def day_type(d):
+        return "weekend" if d.weekday() >= 5 else "werkdag"
+
+    def rate_on(self, d):
+        part = self.week.get(self.day_type(d))
+        return part[0] if part else self.rate_per_day
+
+    def hours_on(self, d):
+        part = self.week.get(self.day_type(d))
+        return part[1] if part else self.hour_p
+
+    def usual_hours(self, count=2, hour_p=None):
+        hour_p = hour_p or self.hour_p
+        ranked = sorted(range(24), key=lambda h: -hour_p[h])
         return sorted(ranked[:count])
 
 
@@ -85,21 +161,61 @@ def cycles_from_states(states, on_states, until):
     return merged
 
 
-def learn(kind, cycles, days, default_kwh=None, default_min=None):
-    """Leert de gewoonte uit de cycli van de afgelopen `days` dagen."""
-    base_kwh, base_min = DEFAULTS.get(kind, DEFAULTS["overig"])
-    base_kwh = default_kwh or base_kwh
-    base_h = (default_min or base_min) / 60
-    days = max(1.0, days)
+WEEK_MIN_DAYS = 21      # pas met zoveel dagen historie een eigen weekend en werkdag
+WEEK_PRIOR_DAYS = 7     # zoveel dagen telt het gemiddelde mee in het weekend- en werkdagcijfer
+WEEK_PRIOR_STARTS = 4   # zoveel starts telt de algemene urenverdeling mee
+
+
+def _hour_counts(cycles):
     counts = [0.0] * 24
     for c in cycles:
         h = c.start.hour
         counts[h] += 0.5
         counts[(h - 1) % 24] += 0.25
         counts[(h + 1) % 24] += 0.25
+    return counts
+
+
+def _day_types(first, last):
+    """Aantal werkdagen en weekenddagen tussen twee tijdstippen (op hele dagen afgerond)."""
+    out = {"werkdag": 0.0, "weekend": 0.0}
+    d = first.date()
+    while d <= last.date():
+        out[Habit.day_type(d)] += 1
+        d += timedelta(days=1)
+    total = sum(out.values()) or 1
+    span = max(1.0, (last - first).total_seconds() / 86400)
+    return {k: v * span / total for k, v in out.items()}
+
+
+def learn(kind, cycles, days, default_kwh=None, default_min=None, span=None):
+    """Leert de gewoonte uit de cycli van de afgelopen `days` dagen.
+
+    span: (eerste, laatste tijdstip) van de historie; daarmee leert hij ook het verschil
+    tussen werkdag en weekend, als er minstens WEEK_MIN_DAYS dagen zijn.
+    """
+    base_kwh, base_min = DEFAULTS.get(kind, DEFAULTS["overig"])
+    base_kwh = default_kwh or base_kwh
+    base_h = (default_min or base_min) / 60
+    days = max(1.0, days)
+    counts = _hour_counts(cycles)
     n = len(cycles)
     prior = 1.0
     hour_p = [(counts[h] + prior / 24) / (n + prior) for h in range(24)]
+    week = {}
+    if span is not None and days >= WEEK_MIN_DAYS:
+        rate = n / days
+        day_count = _day_types(*span)
+        for part, part_days in day_count.items():
+            mine = [c for c in cycles if Habit.day_type(c.start) == part]
+            c_part = _hour_counts(mine)
+            k = WEEK_PRIOR_STARTS
+            week[part] = ((len(mine) + rate * WEEK_PRIOR_DAYS) / (part_days + WEEK_PRIOR_DAYS),
+                          [(c_part[h] + hour_p[h] * k) / (len(mine) + k) for h in range(24)])
+    programs = {}
+    for c in cycles:
+        if c.program:
+            programs[c.program] = programs.get(c.program, 0) + 1
     finished = [(c.end - c.start).total_seconds() / 3600 for c in cycles if not c.ongoing]
     finished = [d for d in finished if d > 0.05]
     if finished:
@@ -110,7 +226,7 @@ def learn(kind, cycles, days, default_kwh=None, default_min=None):
     known = [c.kwh for c in cycles if not c.ongoing and c.kwh is not None]
     kwh = (sum(known) + base_kwh * PRIOR_CYCLES) / (len(known) + PRIOR_CYCLES)
     return Habit(kind, n / days, hour_p, kwh, duration, n, days, len(known),
-                 PROFILES.get(kind, PROFILES["overig"]))
+                 PROFILES.get(kind, PROFILES["overig"]), week, programs)
 
 
 def _energy(profile, kwh, a, b):
@@ -165,13 +281,14 @@ def forecast(habit, slot_starts, slot_hours, now, known=(), started_today=0):
 
     # Wat er vandaag nog kan komen: de dagelijkse gewoonte min wat er al was.
     today = now.date()
-    rest_today = sum(habit.hour_p[s.hour] * nominal for s in slot_starts if s.date() == today)
-    expected_today = habit.rate_per_day * rest_today
+    rate_today, hours_today = habit.rate_on(today), habit.hours_on(today)
+    rest_today = sum(hours_today[s.hour] * nominal for s in slot_starts if s.date() == today)
+    expected_today = rate_today * rest_today
     factor_today = 0.0 if expected_today <= 1e-9 else min(
-        1.0, max(0.0, habit.rate_per_day - started_today) / expected_today)
+        1.0, max(0.0, rate_today - started_today) / expected_today)
 
     for s in candidates:
-        mass = habit.rate_per_day * habit.hour_p[s.hour] * nominal
+        mass = habit.rate_on(s.date()) * habit.hours_on(s.date())[s.hour] * nominal
         if mass <= 0:
             continue
         mid = s + step / 2
