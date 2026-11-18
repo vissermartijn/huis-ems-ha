@@ -439,6 +439,35 @@ def main():
     print("dit kwartier:", now_q["state"], now_q["attributes"])
     print("\nterugblik:", state("sensor.huis_ems_terugblik")["state"], "kwartieren | voorspelkwaliteit:",
           state("sensor.huis_ems_voorspelkwaliteit")["attributes"])
+    # Elke sensor die de dashboards noemen, moet bestaan.
+    import re
+    existing = {s["entity_id"] for s in call("/api/states")}
+    named = set()
+    for name in ("dashboard.yaml", "grafieken.yaml"):
+        named |= set(re.findall(r"sensor\.huis_ems_[a-z0-9_]+", pathlib.Path(__file__).parent.parent.joinpath(
+            "homeassistant", name).read_text(encoding="utf-8")))
+    missing = sorted(e for e in named if e not in existing and "zen_echt" not in e)
+    expect(not missing, f"dashboard: alle genoemde sensoren bestaan ({missing})")
+
+    # Herstart met de integratie erin: Home Assistant moet helemaal opstarten.
+    import subprocess
+    subprocess.run(["docker", "restart", "ha-ems-test"], check=True, capture_output=True)
+    wait_ready()
+    login_after = time.time() + 180
+    running = None
+    while time.time() < login_after:
+        try:
+            running = call("/api/config").get("state")
+        except Exception:
+            running = None
+        if running == "RUNNING":
+            break
+        time.sleep(3)
+    expect(running == "RUNNING", f"herstart: Home Assistant start binnen 3 minuten helemaal op ({running})")
+    time.sleep(10)
+    expect(state("sensor.huis_ems_plan")["state"] not in ("unknown", "unavailable"),
+           "herstart: de vooruitblik is na het opstarten berekend")
+
     if "--serve" in sys.argv:
         serve(entry_id, meter)
         return

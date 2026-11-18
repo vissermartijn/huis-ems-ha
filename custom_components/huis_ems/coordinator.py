@@ -534,11 +534,8 @@ class EmsCoordinator:
             self.habits, self.cycles = {}, {}
             return
         start = now - timedelta(days=CYCLE_DAYS)
-        try:   # net gewijzigde toestand eerst laten wegschrijven
-            from homeassistant.components.recorder import get_instance
-            await get_instance(self.hass).async_block_till_done()
-        except Exception as err:
-            _LOGGER.debug("Recorder niet bij te werken: %s", err)
+        # Niet op de recorder wachten: tijdens het opstarten wacht die op ons. Dat hij een paar
+        # seconden achterloopt, vangt de actuele toestand hieronder op.
         found, window = {}, {}
         for key, src in sources.items():
             try:

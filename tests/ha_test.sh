@@ -10,6 +10,10 @@ export EMS_TEST_WORK="$WORK"
 HA_VERSION="${HA_VERSION:-2026.11.1}"
 cp tests/ha_test_configuration.yaml "$WORK/configuration.yaml"
 cp homeassistant/dashboard.yaml "$WORK/ems_dashboard.yaml"
+cp homeassistant/grafieken.yaml "$WORK/ems_grafieken.yaml"
+# Grafieken bekijken: APEX_JS=/pad/naar/apexcharts-card.js sh tests/ha_test.sh --serve
+mkdir -p "$WORK/www"
+if [ -n "$APEX_JS" ]; then cp "$APEX_JS" "$WORK/www/apexcharts-card.js"; else : > "$WORK/www/apexcharts-card.js"; fi
 if command -v cygpath >/dev/null; then W="$(cygpath -w "$WORK")"; C="$(cygpath -w "$PWD/custom_components")"; else W="$WORK"; C="$PWD/custom_components"; fi
 MSYS_NO_PATHCONV=1 docker run -d --name ha-ems-test -p 8124:8123 --add-host host.docker.internal:host-gateway -e TZ=Europe/Amsterdam \
   -v "$W:/config" -v "$C:/config/custom_components" "ghcr.io/home-assistant/home-assistant:$HA_VERSION" >/dev/null

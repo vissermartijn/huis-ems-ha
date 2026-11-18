@@ -9,7 +9,18 @@ homeassistant:
       allow_bypass_login: true
     - type: homeassistant
 lovelace:
+  # apexcharts-card alleen als ha_test.sh hem met APEX_JS meekrijgt (anders een lege bron).
+  resource_mode: yaml
+  resources:
+    - url: /local/apexcharts-card.js
+      type: module
   dashboards:
+    ems-grafieken:
+      mode: yaml
+      title: Energie grafieken
+      icon: mdi:chart-areaspline
+      show_in_sidebar: true
+      filename: ems_grafieken.yaml
     ems-test:
       mode: yaml
       title: Energievoorspelling

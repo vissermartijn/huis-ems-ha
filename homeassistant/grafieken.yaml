@@ -81,6 +81,7 @@ views:
                       maxWidth: 45
                 series:
                   - entity: sensor.huis_ems_terugblik
+                    extend_to: false
                     name: Verbruik
                     type: line
                     color: rgb(30, 136, 229)
@@ -110,6 +111,7 @@ views:
                         .map((r) => [Date.parse(r.t), r.etmaal_verbruik_w ?? r.verwacht_verbruik_w ?? null]);
                       return oud.concat((a.verbruik_w || []).map((v, i) => [t0 + i * stap, v]));
                   - entity: sensor.huis_ems_terugblik
+                    extend_to: false
                     name: Zon
                     type: area
                     color: rgb(255, 152, 0)
@@ -152,13 +154,13 @@ views:
                     float_precision: 0
                     show:
                       in_chart: false
-                  - entity: sensor.huis_ems_verbruik_24u
+                  - entity: sensor.huis_ems_verwacht_verbruik_komende_24_uur
                     name: Verbruik 24 uur
                     color: rgb(30, 136, 229)
                     float_precision: 1
                     show:
                       in_chart: false
-                  - entity: sensor.huis_ems_zon_24u
+                  - entity: sensor.huis_ems_verwachte_zon_komende_24_uur
                     name: Zon 24 uur
                     color: rgb(255, 152, 0)
                     float_precision: 1
@@ -322,6 +324,7 @@ views:
                       maxWidth: 45
                 series:
                   - entity: sensor.huis_ems_terugblik
+                    extend_to: false
                     name: Lading
                     type: line
                     color: rgb(67, 160, 71)
